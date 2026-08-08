@@ -99,3 +99,108 @@ export async function getAvailableSlots(
     return { ok: false, reason: `transient:${String(e?.message ?? e)}` };
   }
 }
+
+interface DentalinkPatientMatch {
+  id: number;
+}
+
+/** Busca un paciente existente por teléfono. patientId: null si no hay match. */
+export async function findPatientByPhone(
+  env: Env,
+  telefono: string,
+): Promise<{ ok: true; patientId: number | null } | { ok: false; reason: string }> {
+  if (!env.DENTALINK_API_TOKEN) return { ok: false, reason: "not_configured" };
+  const url = `${DENTALINK_API}/pacientes/buscar?telefono=${encodeURIComponent(telefono)}`;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Token ${env.DENTALINK_API_TOKEN}` } });
+    if (!res.ok) return { ok: false, reason: `http_${res.status}` };
+    const body = await res.json();
+    const list = extractList<DentalinkPatientMatch>(body);
+    return { ok: true, patientId: list[0]?.id ?? null };
+  } catch (e: any) {
+    return { ok: false, reason: `transient:${String(e?.message ?? e)}` };
+  }
+}
+
+/** Crea un paciente nuevo en Dentalink. */
+export async function createPatient(
+  env: Env,
+  args: { nombre: string; telefono: string; email?: string },
+): Promise<{ ok: true; patientId: number } | { ok: false; reason: string }> {
+  if (!env.DENTALINK_API_TOKEN) return { ok: false, reason: "not_configured" };
+  try {
+    const res = await fetch(`${DENTALINK_API}/pacientes`, {
+      method: "POST",
+      headers: { Authorization: `Token ${env.DENTALINK_API_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nombre: args.nombre,
+        telefono: args.telefono,
+        ...(args.email ? { email: args.email } : {}),
+      }),
+    });
+    if (!res.ok) return { ok: false, reason: `http_${res.status}` };
+    const body = (await res.json()) as { data?: { id: number }; id?: number };
+    const id = body.data?.id ?? body.id;
+    if (!id) return { ok: false, reason: "no_patient_id" };
+    return { ok: true, patientId: id };
+  } catch (e: any) {
+    return { ok: false, reason: `transient:${String(e?.message ?? e)}` };
+  }
+}
+
+/** Reusa el paciente si ya existe por teléfono; si no, lo crea. */
+export async function findOrCreatePatient(
+  env: Env,
+  args: { nombre: string; telefono: string; email?: string },
+): Promise<{ ok: true; patientId: number } | { ok: false; reason: string }> {
+  const found = await findPatientByPhone(env, args.telefono);
+  if (!found.ok) return found;
+  if (found.patientId) return { ok: true, patientId: found.patientId };
+  return createPatient(env, args);
+}
+
+/** Busca/crea al paciente y agenda la cita. */
+export async function createBooking(
+  env: Env,
+  args: {
+    dentistaId: number;
+    sucursalId: number;
+    date: string;
+    horaInicio: string;
+    horaFin: string;
+    nombrePaciente: string;
+    telefonoPaciente: string;
+    emailPaciente?: string;
+    comentario?: string;
+  },
+): Promise<{ ok: true; citaId: number; patientId: number } | { ok: false; reason: string }> {
+  if (!env.DENTALINK_API_TOKEN) return { ok: false, reason: "not_configured" };
+  const patient = await findOrCreatePatient(env, {
+    nombre: args.nombrePaciente,
+    telefono: args.telefonoPaciente,
+    email: args.emailPaciente,
+  });
+  if (!patient.ok) return { ok: false, reason: `patient:${patient.reason}` };
+  try {
+    const res = await fetch(`${DENTALINK_API}/citas/`, {
+      method: "POST",
+      headers: { Authorization: `Token ${env.DENTALINK_API_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id_paciente: patient.patientId,
+        id_dentista: args.dentistaId,
+        id_sucursal: args.sucursalId,
+        fecha: args.date,
+        hora_inicio: args.horaInicio,
+        hora_fin: args.horaFin,
+        ...(args.comentario ? { comentario: args.comentario } : {}),
+      }),
+    });
+    if (!res.ok) return { ok: false, reason: `http_${res.status}` };
+    const body = (await res.json()) as { data?: { id: number }; id?: number };
+    const citaId = body.data?.id ?? body.id;
+    if (!citaId) return { ok: false, reason: "no_cita_id" };
+    return { ok: true, citaId, patientId: patient.patientId };
+  } catch (e: any) {
+    return { ok: false, reason: `transient:${String(e?.message ?? e)}` };
+  }
+}
