@@ -14,6 +14,8 @@ export function isPro(env: Env): boolean {
 export const PRO_ONLY_TOOLS = [
   "scheduleAppointment",
   "catalogQuery",
+  "dentalinkAvailability",
+  "dentalinkAppointment",
 ] as const;
 
 // Tabs del dashboard reservadas al tier Pro (Análisis + growth). El tier free
