@@ -39,3 +39,31 @@ describe("cableado del playbook al prompt", () => {
     expect(prompt).not.toContain("<diagnostic_playbooks>");
   });
 });
+
+describe("getNiche — dentista", () => {
+  it("BOT_NICHE=dentista resuelve el pack de clínica dental", () => {
+    const n = getNiche(envWith("dentista"));
+    expect(n.id).toBe("dentista");
+    expect(n.navLabel).toBe("Pacientes");
+    expect(n.recordSingular).toBe("Paciente");
+    expect(n.statusLabels.sold).toBe("Cita agendada");
+    expect(n.columns.map((c) => c.key)).toEqual(["tratamiento", "prevision", "fecha_cita"]);
+    expect(n.playbook).toContain("Previsión primero");
+    expect(n.defaultTone).toBe("cercano y tranquilizador");
+    expect(n.kbDocs.length).toBeGreaterThan(0);
+  });
+
+  it("normaliza mayúsculas/espacios (DENTISTA, ' dentista ')", () => {
+    expect(getNiche(envWith("DENTISTA")).id).toBe("dentista");
+    expect(getNiche(envWith(" dentista ")).id).toBe("dentista");
+  });
+});
+
+describe("cableado del playbook de dentista al prompt", () => {
+  it("inyecta el playbook del giro en el system prompt", () => {
+    const env = envWith("dentista");
+    const prompt = systemPromptFromEnv(env, ["searchKb", "dentalinkAvailability"], "ctx", getNiche(env).playbook || undefined);
+    expect(prompt).toContain("<diagnostic_playbooks>");
+    expect(prompt).toContain("Urgencia dental");
+  });
+});
