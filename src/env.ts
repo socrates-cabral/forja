@@ -74,6 +74,18 @@ export interface Env {
   CALCOM_EVENT_TYPE_ID?: string;           // event type por defecto (numérico, como string)
   CALCOM_EVENT_TYPES?: string;             // opcional: JSON {"corte":123,"barba":456} servicio→eventTypeId
   CALCOM_TIMEZONE?: string;                // zona horaria (default America/Mexico_City)
+
+  // ── Dentalink (agenda real para el nicho "dentista") ─────────────────────
+  // Con estas vars, el bot consulta disponibilidad real y agenda citas en
+  // Dentalink (https://api.dentalink.healthatom.com). Mutuamente excluyente
+  // con Cal.com: si Dentalink está configurado, buildTools() usa las tools
+  // dentalinkAvailability/dentalinkAppointment en vez de scheduleAppointment.
+  DENTALINK_API_TOKEN?: string;            // secret: token de la API (Authorization: Token <token>)
+  DENTALINK_SUCURSAL_ID?: string;          // id numérico de la sucursal (como string)
+  DENTALINK_DENTISTA_ID?: string;          // dentista por defecto (numérico, como string)
+  DENTALINK_DENTISTA_MAP?: string;         // opcional: JSON {"limpieza":123,"ortodoncia":456} servicio→id_dentista
+  DENTALINK_TIMEZONE?: string;             // zona horaria (default America/Santiago)
+
   GOOGLE_SERVICE_ACCOUNT_JSON?: string;  // base64-encoded JSON
   OWNER_EMAIL: string;  // for handoff notifications (email)
   OWNER_TELEGRAM_CHAT_ID?: string;  // for handoff notifications (default channel)
