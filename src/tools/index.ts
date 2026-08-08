@@ -7,6 +7,9 @@ import { snoozeUserTool } from "./snoozeUser";
 import { captureLeadTool } from "./captureLead";
 import { scheduleAppointmentTool } from "./scheduleAppointment";
 import { catalogQueryTool } from "./catalogQuery";
+import { dentalinkAvailabilityTool } from "./dentalinkAvailability";
+import { dentalinkAppointmentTool } from "./dentalinkAppointment";
+import { dentalinkConfigured } from "../integrations/dentalink";
 
 export interface ToolContext {
   env: Env;
@@ -27,8 +30,17 @@ export function buildTools(ctx: ToolContext) {
 
   // Pro tier additions
   if (isPro(ctx.env)) {
-    tools.scheduleAppointment = scheduleAppointmentTool(ctx.env, ctx.getConversationId);
     tools.catalogQuery = catalogQueryTool(ctx.env);
+
+    // Agenda de citas: Dentalink y Cal.com son mutuamente excluyentes — una
+    // clínica que configuró Dentalink no necesita (ni debe ver) la tool
+    // genérica de Cal.com, y viceversa.
+    if (dentalinkConfigured(ctx.env)) {
+      tools.dentalinkAvailability = dentalinkAvailabilityTool(ctx.env);
+      tools.dentalinkAppointment = dentalinkAppointmentTool(ctx.env, ctx.getConversationId);
+    } else {
+      tools.scheduleAppointment = scheduleAppointmentTool(ctx.env, ctx.getConversationId);
+    }
   }
 
   return tools;

@@ -59,4 +59,23 @@ describe("buildTools", () => {
       expect(tools.reservarHospedaje).toBeUndefined();
     }
   });
+
+  it("pro tier con Dentalink configurado usa dentalinkAvailability/dentalinkAppointment en vez de scheduleAppointment", () => {
+    const ctx = makeCtx("pro");
+    (ctx.env as any).DENTALINK_API_TOKEN = "tok";
+    (ctx.env as any).DENTALINK_SUCURSAL_ID = "1";
+    (ctx.env as any).DENTALINK_DENTISTA_ID = "9";
+    const tools = buildTools(ctx);
+    expect(Object.keys(tools).sort()).toEqual([
+      "captureLead",
+      "catalogQuery",
+      "dentalinkAppointment",
+      "dentalinkAvailability",
+      "handoffHuman",
+      "pauseBot",
+      "searchKb",
+      "snoozeUser",
+    ]);
+    expect(tools.scheduleAppointment).toBeUndefined();
+  });
 });
