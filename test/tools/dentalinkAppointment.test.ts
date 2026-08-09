@@ -5,6 +5,12 @@ describe("dentalinkAppointmentTool", () => {
   it("agenda la cita vía Dentalink", async () => {
     global.fetch = vi
       .fn()
+      // createBooking revalida disponibilidad antes de agendar (guardia anti doble reserva)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id_paciente: 0, hora_inicio: "09:00", hora_fin: "09:30" }] }), {
+          status: 200,
+        }),
+      )
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 })) // no existe el paciente
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { id: 77 } }), { status: 201 })) // paciente creado
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { id: 555 } }), { status: 201 })) as any; // cita creada

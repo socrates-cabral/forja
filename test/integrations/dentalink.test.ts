@@ -39,6 +39,18 @@ describe("dentalinkConfigured", () => {
       ),
     ).toBe(true);
   });
+  it("false si la sucursal no es numérica (typo silencioso)", () => {
+    expect(
+      dentalinkConfigured(env({ DENTALINK_API_TOKEN: "tok", DENTALINK_SUCURSAL_ID: "abc", DENTALINK_DENTISTA_ID: "9" })),
+    ).toBe(false);
+  });
+  it("false si el mapa de dentistas es JSON roto y no hay default", () => {
+    expect(
+      dentalinkConfigured(
+        env({ DENTALINK_API_TOKEN: "tok", DENTALINK_SUCURSAL_ID: "1", DENTALINK_DENTISTA_MAP: "{no-json" }),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("dentalinkTimeZone", () => {
@@ -63,6 +75,12 @@ describe("resolveDentistaId", () => {
   });
   it("sin match usa el primero del mapa", () => {
     expect(resolveDentistaId(env({ DENTALINK_DENTISTA_MAP: '{"limpieza":10}' }), "algo raro")).toBe(10);
+  });
+  it("sin match prefiere DENTALINK_DENTISTA_ID sobre el primero del mapa", () => {
+    const e = env({ DENTALINK_DENTISTA_ID: "99", DENTALINK_DENTISTA_MAP: '{"limpieza":10,"ortodoncia":20}' });
+    expect(resolveDentistaId(e, "endodoncia")).toBe(99);
+    // el match por palabra sigue ganando sobre el default
+    expect(resolveDentistaId(e, "quiero una limpieza")).toBe(10);
   });
   it("null sin config", () => {
     expect(resolveDentistaId(env(), "limpieza")).toBeNull();
@@ -121,6 +139,56 @@ describe("getAvailableSlots", () => {
     if (res.ok) expect(res.slots).toEqual([{ horaInicio: "11:00", horaFin: "11:30" }]);
   });
 
+  it('trata id_paciente "0" (string) y null como bloque libre', async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                { id_paciente: "0", hora_inicio: "09:00", hora_fin: "09:30" },
+                { id_paciente: null, hora_inicio: "10:00", hora_fin: "10:30" },
+                { id_paciente: "55", hora_inicio: "11:00", hora_fin: "11:30" },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const res = await getAvailableSlots(env({ DENTALINK_API_TOKEN: "tok" }), 9, 1, "2026-08-07");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.slots).toEqual([
+        { horaInicio: "09:00", horaFin: "09:30" },
+        { horaInicio: "10:00", horaFin: "10:30" },
+      ]);
+    }
+  });
+
+  it("descarta bloques sin hora_inicio/hora_fin aunque estén libres", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                { id_paciente: 0, hora_inicio: "09:00" }, // falta hora_fin
+                { id_paciente: 0, hora_inicio: "10:00", hora_fin: "" }, // hora_fin vacía
+                { id_paciente: 0, hora_inicio: "", hora_fin: "11:30" }, // hora_inicio vacía
+                { id_paciente: 0, hora_inicio: "12:00", hora_fin: "12:30" }, // válido
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const res = await getAvailableSlots(env({ DENTALINK_API_TOKEN: "tok" }), 9, 1, "2026-08-07");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.slots).toEqual([{ horaInicio: "12:00", horaFin: "12:30" }]);
+  });
+
   it("devuelve error si la API falla", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 500 })));
     const res = await getAvailableSlots(env({ DENTALINK_API_TOKEN: "tok" }), 9, 1, "2026-08-07");
@@ -140,7 +208,10 @@ describe("findPatientByPhone", () => {
   it("devuelve el id si Dentalink encuentra un paciente con ese teléfono", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 321, nombre: "Ana" }] }), { status: 200 })),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ data: [{ id: 321, nombre: "Ana", telefono: "+56912345678" }] }), { status: 200 }),
+      ),
     );
     const res = await findPatientByPhone(env({ DENTALINK_API_TOKEN: "tok" }), "+56912345678");
     expect(res.ok).toBe(true);
@@ -152,6 +223,37 @@ describe("findPatientByPhone", () => {
     const res = await findPatientByPhone(env({ DENTALINK_API_TOKEN: "tok" }), "+56900000000");
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.patientId).toBeNull();
+  });
+
+  it("null si hay candidatos pero ninguno tiene el teléfono buscado", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                { id: 100, nombre: "Otro", telefono: "+56999999999" }, // otro número
+                { id: 101, nombre: "Sin fono" }, // sin campo telefono
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const res = await findPatientByPhone(env({ DENTALINK_API_TOKEN: "tok" }), "+56912345678");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.patientId).toBeNull();
+  });
+
+  it("normaliza el formato: '+56 9 1234 5678' matchea con '912345678'", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 321, telefono: "912345678" }] }), { status: 200 })),
+    );
+    const res = await findPatientByPhone(env({ DENTALINK_API_TOKEN: "tok" }), "+56 9 1234 5678");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.patientId).toBe(321);
   });
 
   it("error si no hay token", async () => {
@@ -188,7 +290,9 @@ describe("createPatient", () => {
 
 describe("findOrCreatePatient", () => {
   it("reusa el paciente si ya existe (no llama a crear)", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 42 }] }), { status: 200 }));
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: [{ id: 42, telefono: "+56911111111" }] }), { status: 200 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const res = await findOrCreatePatient(env({ DENTALINK_API_TOKEN: "tok" }), { nombre: "Ana", telefono: "+56911111111" });
     expect(res.ok).toBe(true);
@@ -210,10 +314,15 @@ describe("findOrCreatePatient", () => {
 });
 
 describe("createBooking", () => {
+  /** Respuesta de /agendas con el bloque 09:00-09:30 libre (la revalidación previa). */
+  const availabilityOk = () =>
+    new Response(JSON.stringify({ data: [{ id_paciente: 0, hora_inicio: "09:00", hora_fin: "09:30" }] }), { status: 200 });
+
   it("busca/crea al paciente y crea la cita", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ id: 42 }] }), { status: 200 })) // paciente existe
+      .mockResolvedValueOnce(availabilityOk()) // revalidación de disponibilidad
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ id: 42, telefono: "+56912345678" }] }), { status: 200 })) // paciente existe
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { id: 555 } }), { status: 201 })); // cita creada
     vi.stubGlobal("fetch", fetchMock);
 
@@ -233,7 +342,9 @@ describe("createBooking", () => {
       expect(res.patientId).toBe(42);
     }
 
-    const [url, init] = fetchMock.mock.calls[1];
+    // 0 = disponibilidad, 1 = búsqueda de paciente, 2 = POST de la cita
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/agendas");
+    const [url, init] = fetchMock.mock.calls[2];
     expect(String(url)).toContain("/citas/");
     const body = JSON.parse((init as any).body);
     expect(body).toEqual({
@@ -248,7 +359,11 @@ describe("createBooking", () => {
   });
 
   it("propaga el error si falla la búsqueda/creación del paciente", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 500 })));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(availabilityOk()) // el horario está libre
+      .mockResolvedValue(new Response("bad", { status: 500 })); // falla el paciente
+    vi.stubGlobal("fetch", fetchMock);
     const res = await createBooking(env({ DENTALINK_API_TOKEN: "tok" }), {
       dentistaId: 9,
       sucursalId: 1,
@@ -260,6 +375,45 @@ describe("createBooking", () => {
     });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toContain("patient:");
+  });
+
+  it("slot_unavailable si el horario pedido ya no está libre — no toca paciente ni citas", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: [{ id_paciente: 0, hora_inicio: "11:00", hora_fin: "11:30" }] }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await createBooking(env({ DENTALINK_API_TOKEN: "tok" }), {
+      dentistaId: 9,
+      sucursalId: 1,
+      date: "2026-08-10",
+      horaInicio: "09:00", // no está entre los libres
+      horaFin: "09:30",
+      nombrePaciente: "Ana",
+      telefonoPaciente: "+56912345678",
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("slot_unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(1); // solo la consulta de disponibilidad
+  });
+
+  it("availability:<reason> si la revalidación de disponibilidad falla", async () => {
+    const fetchMock = vi.fn(async () => new Response("boom", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await createBooking(env({ DENTALINK_API_TOKEN: "tok" }), {
+      dentistaId: 9,
+      sucursalId: 1,
+      date: "2026-08-10",
+      horaInicio: "09:00",
+      horaFin: "09:30",
+      nombrePaciente: "Ana",
+      telefonoPaciente: "+56912345678",
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("availability:http_503");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("error si no hay token", async () => {

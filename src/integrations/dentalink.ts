@@ -8,13 +8,18 @@ const DENTALINK_API = "https://api.dentalink.healthatom.com/api/v1";
 
 export const DEFAULT_TZ = "America/Santiago";
 
-/** ¿El dueño ya conectó Dentalink? (token + sucursal + al menos un dentista). */
+/**
+ * ¿El dueño ya conectó Dentalink? (token + sucursal + al menos un dentista).
+ *
+ * Valida que los valores REALMENTE parseen, no solo que la variable exista: si
+ * DENTALINK_SUCURSAL_ID trae un typo no numérico (o el mapa de dentistas es JSON
+ * roto), buildTools sacaría scheduleAppointment sin dejar nada funcional en su
+ * lugar — la clínica quedaría sin ninguna herramienta de agendamiento.
+ * (Las function declarations se hoistean: resolveSucursalId/resolveDentistaId
+ * están declaradas más abajo en este mismo archivo.)
+ */
 export function dentalinkConfigured(env: Env): boolean {
-  return Boolean(
-    env.DENTALINK_API_TOKEN &&
-      env.DENTALINK_SUCURSAL_ID &&
-      (env.DENTALINK_DENTISTA_ID || env.DENTALINK_DENTISTA_MAP),
-  );
+  return Boolean(env.DENTALINK_API_TOKEN) && resolveSucursalId(env) !== null && resolveDentistaId(env) !== null;
 }
 
 export function dentalinkTimeZone(env: Env): string {
@@ -22,8 +27,14 @@ export function dentalinkTimeZone(env: Env): string {
 }
 
 /**
- * Resuelve el id_dentista para un servicio. Si hay un mapa DENTALINK_DENTISTA_MAP,
- * busca por coincidencia de palabra (case-insensitive); si no, usa el default.
+ * Resuelve el id_dentista para un servicio. Prioridad:
+ *   1. coincidencia de palabra en DENTALINK_DENTISTA_MAP (case-insensitive);
+ *   2. DENTALINK_DENTISTA_ID — el default que el dueño configuró explícitamente;
+ *   3. el primer valor del mapa (último recurso: depende del orden de claves JSON).
+ *
+ * El orden importa: si el tratamiento no matchea ninguna clave del mapa, caer al
+ * "primero del mapa" agenda con el especialista equivocado según el orden en que
+ * quedaron escritas las claves. El default configurado gana.
  */
 export function resolveDentistaId(env: Env, servicio?: string): number | null {
   const map = parseIdMap(env.DENTALINK_DENTISTA_MAP);
@@ -33,12 +44,13 @@ export function resolveDentistaId(env: Env, servicio?: string): number | null {
       if (s.includes(key.toLowerCase())) return id;
     }
   }
+  const def = Number(env.DENTALINK_DENTISTA_ID);
+  if (Number.isFinite(def) && def > 0) return def;
   if (map) {
     const first = Object.values(map)[0];
     if (typeof first === "number") return first;
   }
-  const def = Number(env.DENTALINK_DENTISTA_ID);
-  return Number.isFinite(def) && def > 0 ? def : null;
+  return null;
 }
 
 export function resolveSucursalId(env: Env): number | null {
@@ -62,9 +74,30 @@ function parseIdMap(raw?: string): Record<string, number> | null {
 }
 
 interface DentalinkSlot {
-  id_paciente: number;
-  hora_inicio: string;
-  hora_fin: string;
+  // El contrato real de la API sólo está confirmado en parte: los bloques libres
+  // se han visto como 0 numérico, pero no hay garantía de que no llegue "0" o null.
+  id_paciente?: number | string | null;
+  hora_inicio?: string;
+  hora_fin?: string;
+}
+
+/** Un bloque está libre si no tiene paciente: 0, "0", null o el campo ausente. */
+function bloqueLibre(idPaciente: DentalinkSlot["id_paciente"]): boolean {
+  if (idPaciente === null || idPaciente === undefined) return true;
+  if (typeof idPaciente === "number") return idPaciente === 0;
+  return idPaciente.trim() === "0";
+}
+
+function horaValida(v: unknown): v is string {
+  return typeof v === "string" && v.trim() !== "";
+}
+
+/**
+ * Normaliza un teléfono a sus últimos 9 dígitos (largo de un móvil chileno), de
+ * modo que "+56912345678", "+56 9 1234 5678" y "912345678" comparen iguales.
+ */
+export function normalizePhone(raw: string): string {
+  return String(raw ?? "").replace(/\D/g, "").slice(-9);
 }
 
 /** Lee `data` si viene envuelto en {data: [...]}, o el array directo si no. */
@@ -92,8 +125,8 @@ export async function getAvailableSlots(
     if (!res.ok) return { ok: false, reason: `http_${res.status}` };
     const body = await res.json();
     const slots = extractList<DentalinkSlot>(body)
-      .filter((s) => s.id_paciente === 0)
-      .map((s) => ({ horaInicio: s.hora_inicio, horaFin: s.hora_fin }));
+      .filter((s) => bloqueLibre(s.id_paciente) && horaValida(s.hora_inicio) && horaValida(s.hora_fin))
+      .map((s) => ({ horaInicio: s.hora_inicio as string, horaFin: s.hora_fin as string }));
     return { ok: true, slots };
   } catch (e: any) {
     return { ok: false, reason: `transient:${String(e?.message ?? e)}` };
@@ -102,9 +135,18 @@ export async function getAvailableSlots(
 
 interface DentalinkPatientMatch {
   id: number;
+  telefono?: string;
 }
 
-/** Busca un paciente existente por teléfono. patientId: null si no hay match. */
+/**
+ * Busca un paciente existente por teléfono. patientId: null si no hay match.
+ *
+ * NUNCA devuelve el primer resultado a ciegas: verifica que el teléfono del
+ * candidato normalice igual al buscado. Si la búsqueda de Dentalink fuera parcial
+ * o difusa, tomar list[0] escribiría la cita en la ficha de OTRO paciente. Sin
+ * match verificado devolvemos null y el llamador crea un paciente nuevo — una
+ * ficha duplicada es mucho menos grave que una cita mal atribuida.
+ */
 export async function findPatientByPhone(
   env: Env,
   telefono: string,
@@ -116,7 +158,11 @@ export async function findPatientByPhone(
     if (!res.ok) return { ok: false, reason: `http_${res.status}` };
     const body = await res.json();
     const list = extractList<DentalinkPatientMatch>(body);
-    return { ok: true, patientId: list[0]?.id ?? null };
+    const buscado = normalizePhone(telefono);
+    const match = buscado
+      ? list.find((p) => typeof p?.telefono === "string" && normalizePhone(p.telefono) === buscado)
+      : undefined;
+    return { ok: true, patientId: match?.id ?? null };
   } catch (e: any) {
     return { ok: false, reason: `transient:${String(e?.message ?? e)}` };
   }
@@ -175,6 +221,16 @@ export async function createBooking(
   },
 ): Promise<{ ok: true; citaId: number; patientId: number } | { ok: false; reason: string }> {
   if (!env.DENTALINK_API_TOKEN) return { ok: false, reason: "not_configured" };
+
+  // Guardia contra doble reserva (TOCTOU): el prompt le pide al modelo consultar
+  // disponibilidad antes, pero un modelo que se la salta —o dos conversaciones
+  // concurrentes— pisarían el mismo bloque. Revalidamos acá, del lado del código.
+  const avail = await getAvailableSlots(env, args.dentistaId, args.sucursalId, args.date);
+  if (!avail.ok) return { ok: false, reason: `availability:${avail.reason}` };
+  if (!avail.slots.some((s) => s.horaInicio === args.horaInicio)) {
+    return { ok: false, reason: "slot_unavailable" };
+  }
+
   const patient = await findOrCreatePatient(env, {
     nombre: args.nombrePaciente,
     telefono: args.telefonoPaciente,
