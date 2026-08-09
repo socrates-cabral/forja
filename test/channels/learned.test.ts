@@ -281,4 +281,22 @@ describe("makeLearnedAdapter.sendReply — content.type (auto-channel)", () => {
       ),
     ).rejects.toThrow("MANYCHAT_API_KEY not set");
   });
+
+  it("con interactive, manda un único mensaje de texto numerado", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const adapter = makeLearnedAdapter("instagram");
+    await adapter.sendReply(
+      {
+        channel: "manychat",
+        channelUserId: "abc123",
+        chunks: [],
+        interactive: { question: "¿Primera vez?", options: ["Sí", "No"] },
+      },
+      env,
+    );
+    const body = JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body));
+    expect(body.data.content.messages[0].text).toBe("¿Primera vez?\n\n1. Sí\n2. No");
+  });
 });

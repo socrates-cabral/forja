@@ -9,6 +9,7 @@
 //  • GET de verificación (handshake con META_VERIFY_TOKEN) — lo maneja index.ts.
 //  • Validar la firma X-Hub-Signature-256 de cada POST — verifyMetaSignature().
 import type { ChannelAdapter, IncomingMessage, OutgoingReply, ChannelId } from "./shared";
+import { renderInteractiveAsText } from "./shared";
 import type { Env } from "../env";
 
 const GRAPH_VERSION = "v21.0";
@@ -146,12 +147,13 @@ export const metaAdapter: ChannelAdapter = {
     const node = useIG ? await instagramSenderId(token) : "me";
     const url = `${base}/${GRAPH_VERSION}/${node}/messages`;
     console.log("meta out:", JSON.stringify({ useIG, node, to: reply.channelUserId }));
-    for (let i = 0; i < reply.chunks.length; i++) {
+    const chunks = reply.interactive ? [renderInteractiveAsText(reply.interactive)] : reply.chunks;
+    for (let i = 0; i < chunks.length; i++) {
       const delay = i === 0 ? 0 : reply.interChunkDelayMs ?? 1000;
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       const payload: Record<string, unknown> = {
         recipient: { id: reply.channelUserId },
-        message: { text: reply.chunks[i] },
+        message: { text: chunks[i] },
       };
       if (!useIG) payload.messaging_type = "RESPONSE"; // requerido en Messenger, no en IG Login
       const res = await fetch(url, {

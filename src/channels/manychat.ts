@@ -1,4 +1,5 @@
 import type { ChannelAdapter, IncomingMessage, OutgoingReply } from "./shared";
+import { renderInteractiveAsText } from "./shared";
 import type { Env } from "../env";
 
 const MANYCHAT_API = "https://api.manychat.com/fb";
@@ -136,7 +137,8 @@ export const manychatAdapter: ChannelAdapter = {
     // ManyChat needs the content type to match the channel (instagram is the
     // default since that's the primary IG flow).
     const contentType = env.MANYCHAT_CONTENT_TYPE ?? "instagram";
-    for (let i = 0; i < reply.chunks.length; i++) {
+    const chunks = reply.interactive ? [renderInteractiveAsText(reply.interactive)] : reply.chunks;
+    for (let i = 0; i < chunks.length; i++) {
       const delay = i === 0 ? 0 : reply.interChunkDelayMs ?? 1000;
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       await fetch(`${MANYCHAT_API}/sending/sendContent`, {
@@ -151,7 +153,7 @@ export const manychatAdapter: ChannelAdapter = {
             version: "v2",
             content: {
               type: contentType,
-              messages: [{ type: "text", text: reply.chunks[i] }],
+              messages: [{ type: "text", text: chunks[i] }],
             },
           },
         }),

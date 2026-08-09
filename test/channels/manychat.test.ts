@@ -148,4 +148,20 @@ describe("manychatAdapter.sendReply", () => {
     const body = JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body));
     expect(body.data.content.type).toBe("whatsapp");
   });
+
+  it("con interactive, manda un único mensaje de texto numerado", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const env = { MANYCHAT_API_KEY: "key" } as unknown as Env;
+    await manychatAdapter.sendReply(
+      {
+        channel: "manychat",
+        channelUserId: "abc123",
+        chunks: [],
+        interactive: { question: "¿Primera vez?", options: ["Sí", "No"] },
+      },
+      env,
+    );
+    const body = JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body));
+    expect(body.data.content.messages[0].text).toBe("¿Primera vez?\n\n1. Sí\n2. No");
+  });
 });

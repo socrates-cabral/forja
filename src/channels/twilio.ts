@@ -1,4 +1,5 @@
 import type { ChannelAdapter, IncomingMessage, OutgoingReply } from "./shared";
+import { renderInteractiveAsText } from "./shared";
 import type { Env } from "../env";
 
 export const twilioAdapter: ChannelAdapter = {
@@ -39,13 +40,14 @@ export const twilioAdapter: ChannelAdapter = {
     if (!sid || !tok || !from) throw new Error("Twilio credentials missing");
     const auth = btoa(`${sid}:${tok}`);
     const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
-    for (let i = 0; i < reply.chunks.length; i++) {
+    const chunks = reply.interactive ? [renderInteractiveAsText(reply.interactive)] : reply.chunks;
+    for (let i = 0; i < chunks.length; i++) {
       const delay = i === 0 ? 0 : reply.interChunkDelayMs ?? 1000;
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       const body = new URLSearchParams({
         From: `whatsapp:${from}`,
         To: `whatsapp:${reply.channelUserId}`,
-        Body: reply.chunks[i],
+        Body: chunks[i],
       });
       await fetch(url, {
         method: "POST",
