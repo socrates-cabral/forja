@@ -83,6 +83,38 @@ describe("parseWhatsAppEvents", () => {
     // imagen sin caption y sin URL firmable → se descarta
     expect(out).toHaveLength(0);
   });
+
+  it("parsea el toque de un botón (interactive/button_reply)", async () => {
+    const out = await parseWhatsAppEvents(
+      body([
+        {
+          from: "5215512345678",
+          id: "wamid.5",
+          type: "interactive",
+          interactive: { type: "button_reply", button_reply: { id: "opt_0", title: "Fonasa" } },
+        } as any,
+      ]) as any,
+      env,
+      ORIGIN,
+    );
+    expect(out[0].text).toBe("Fonasa");
+  });
+
+  it("parsea el toque de una opción de lista (interactive/list_reply)", async () => {
+    const out = await parseWhatsAppEvents(
+      body([
+        {
+          from: "5215512345678",
+          id: "wamid.6",
+          type: "interactive",
+          interactive: { type: "list_reply", list_reply: { id: "opt_2", title: "Particular" } },
+        } as any,
+      ]) as any,
+      env,
+      ORIGIN,
+    );
+    expect(out[0].text).toBe("Particular");
+  });
 });
 
 describe("whatsappAdapter.sendReply", () => {
@@ -111,5 +143,45 @@ describe("whatsappAdapter.sendReply", () => {
     await expect(
       whatsappAdapter.sendReply({ channel: "whatsapp", channelUserId: "x", chunks: ["hi"] }, {} as any),
     ).rejects.toThrow(/WHATSAPP_PHONE_NUMBER_ID/);
+  });
+
+  it("2-3 opciones → manda Reply Buttons", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await whatsappAdapter.sendReply(
+      {
+        channel: "whatsapp",
+        channelUserId: "5215512345678",
+        chunks: [],
+        interactive: { question: "¿Cuál es tu previsión?", options: ["Fonasa", "Isapre", "Particular"] },
+      },
+      { WHATSAPP_PHONE_NUMBER_ID: "PHONE_ID", WHATSAPP_ACCESS_TOKEN: "TOKEN" } as any,
+    );
+    const [, init] = fetchMock.mock.calls[0] as any[];
+    const payload = JSON.parse(init.body);
+    expect(payload.type).toBe("interactive");
+    expect(payload.interactive.type).toBe("button");
+    expect(payload.interactive.body.text).toBe("¿Cuál es tu previsión?");
+    expect(payload.interactive.action.buttons).toHaveLength(3);
+    expect(payload.interactive.action.buttons[0]).toEqual({ type: "reply", reply: { id: "opt_0", title: "Fonasa" } });
+  });
+
+  it("4-10 opciones → manda una List Message", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await whatsappAdapter.sendReply(
+      {
+        channel: "whatsapp",
+        channelUserId: "5215512345678",
+        chunks: [],
+        interactive: { question: "¿Qué servicio?", options: ["Limpieza", "Consulta", "Blanqueamiento", "Urgencia"] },
+      },
+      { WHATSAPP_PHONE_NUMBER_ID: "PHONE_ID", WHATSAPP_ACCESS_TOKEN: "TOKEN" } as any,
+    );
+    const [, init] = fetchMock.mock.calls[0] as any[];
+    const payload = JSON.parse(init.body);
+    expect(payload.interactive.type).toBe("list");
+    expect(payload.interactive.action.sections[0].rows).toHaveLength(4);
+    expect(payload.interactive.action.sections[0].rows[0]).toEqual({ id: "opt_0", title: "Limpieza" });
   });
 });

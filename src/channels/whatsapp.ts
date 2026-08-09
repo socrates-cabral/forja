@@ -25,6 +25,11 @@ interface WaMessage {
   text?: { body?: string };
   image?: { id?: string; caption?: string; mime_type?: string };
   audio?: { id?: string; voice?: boolean; mime_type?: string };
+  interactive?: {
+    type?: string;
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string };
+  };
 }
 
 interface WaChange {
@@ -112,6 +117,10 @@ export async function parseWhatsAppEvents(
         } else if (m.type === "audio" && m.audio?.id) {
           // Las notas de voz llegan como type "audio" con voice:true.
           audioUrl = (await signedMediaUrl(m.audio.id, env, origin)) ?? undefined;
+        } else if (m.type === "interactive") {
+          // Toque de un botón o de una opción de lista — se trata como si el
+          // cliente hubiera escrito el título de la opción.
+          text = m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || undefined;
         }
         console.log(
           "whatsapp in:",
@@ -189,6 +198,49 @@ export const whatsappAdapter: ChannelAdapter = {
       throw new Error("WhatsApp Cloud: falta WHATSAPP_PHONE_NUMBER_ID o WHATSAPP_ACCESS_TOKEN.");
     }
     const url = `https://graph.facebook.com/${GRAPH_VERSION}/${phoneId}/messages`;
+
+    if (reply.interactive) {
+      const { question, options } = reply.interactive;
+      const interactive =
+        options.length <= 3
+          ? {
+              type: "button",
+              body: { text: question },
+              action: {
+                buttons: options.map((opt, i) => ({
+                  type: "reply",
+                  reply: { id: `opt_${i}`, title: opt },
+                })),
+              },
+            }
+          : {
+              type: "list",
+              body: { text: question },
+              action: {
+                button: "Ver opciones",
+                sections: [
+                  { title: "Opciones", rows: options.map((opt, i) => ({ id: `opt_${i}`, title: opt })) },
+                ],
+              },
+            };
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: reply.channelUserId,
+          type: "interactive",
+          interactive,
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error(`whatsapp sendReply (interactive) ${res.status}: ${errBody}`);
+      }
+      return;
+    }
+
     for (let i = 0; i < reply.chunks.length; i++) {
       const delay = i === 0 ? 0 : reply.interChunkDelayMs ?? 1000;
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
