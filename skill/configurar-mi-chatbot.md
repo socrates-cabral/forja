@@ -589,6 +589,7 @@ Con el bot YA vivo y probado (no antes), remata así — sin presión, ya probó
 - `BOT_NAME`, `BUSINESS_NAME`, `BOT_LANGUAGE`, `BOT_TIER` (= `free` en el Starter), `BUFFER_SECONDS`, `DASHBOARD_BASE_URL`.
 - `LLM_PROVIDER` — `"anthropic"` (default) o `"openai"`. Cambia el proveedor de IA; se puede cambiar después y re-desplegar (o desde el panel → Configuración → Modelo de IA).
 - Opcionales para fijar modelos: `ANTHROPIC_MODEL_FAST`/`ANTHROPIC_MODEL_SMART`, `OPENAI_MODEL_FAST`/`OPENAI_MODEL_SMART`.
+- `BOT_TIMEZONE` — opcional, zona horaria IANA del negocio (ej. `America/Santiago`). Ancla la fecha que el bot usa para "hoy/mañana". Default `UTC` si se omite — para un negocio fuera de UTC+0, mejor setearla explícitamente.
 
 **Bindings** ya declarados en `wrangler.toml`:
 - `AI` (Workers AI), `AGENT` (Durable Object `SupportAgent`), `DB` (D1 `horizontes_bot_db`), `KB` (Vectorize `horizontes_bot_kb`), `CATALOG` (R2 `horizontes-bot-catalog`). Cron diario `0 3 * * *` (purga mensajes de más de 90 días).

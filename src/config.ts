@@ -8,11 +8,24 @@ export function isPro(env: Env): boolean {
   return env.BOT_TIER === "pro";
 }
 
+const DEFAULT_BOT_TIMEZONE = "UTC";
+
+/**
+ * Zona horaria del negocio, para anclar el bot a la fecha/hora real (ver
+ * {{TODAY}} en system-prompt.ts). Default UTC — no se asume ningún país,
+ * a diferencia de calcomTimeZone/dentalinkTimeZone que sí tienen un default
+ * regional porque son integraciones específicas de un mercado.
+ */
+export function resolveBotTimezone(env: Env): string {
+  return (env.BOT_TIMEZONE || "").trim() || DEFAULT_BOT_TIMEZONE;
+}
+
 // Tools reservadas al tier Pro. captureLead NO está aquí a propósito: el bot
 // Starter (free) captura leads — es su valor central. Lo Pro son las tools más
 // avanzadas por nicho (agendar citas, consultar catálogo/inventario).
 export const PRO_ONLY_TOOLS = [
   "scheduleAppointment",
+  "calcomAvailability",
   "catalogQuery",
   "dentalinkAvailability",
   "dentalinkAppointment",

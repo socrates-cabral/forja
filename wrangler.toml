@@ -35,6 +35,7 @@ BOT_NAME = "{{BOT_NAME}}"
 BUSINESS_NAME = "{{BUSINESS_NAME}}"
 BOT_LANGUAGE = "{{BOT_LANGUAGE}}"
 BOT_TIER = "{{BOT_TIER}}"  # 'free' | 'pro'
+# BOT_TIMEZONE = "America/Santiago"  # opcional — zona IANA del negocio, ancla la fecha del bot (default UTC si se omite)
 BUFFER_SECONDS = "15"
 DASHBOARD_BASE_URL = "https://horizontes-bot-{{BOT_SLUG}}.workers.dev"
 

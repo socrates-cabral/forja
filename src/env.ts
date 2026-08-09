@@ -21,6 +21,12 @@ export interface Env {
   // re-etiqueta el dashboard, aporta el playbook del giro y sus columnas.
   // Ausente/desconocido → pack genérico (comportamiento actual). Ver src/niches/.
   BOT_NICHE?: string;
+  // Zona horaria IANA del negocio (ej. "America/Santiago"), usada para anclar
+  // el bot a la fecha/hora real en el prompt ({{TODAY}} en system-prompt.ts).
+  // Default UTC si no se setea — deuda técnica 2026-08-09: antes se calculaba
+  // siempre en UTC sin que nada lo pudiera corregir, y una conversación de
+  // noche en Chile (UTC-3/-4) recibía "hoy" adelantado un día.
+  BOT_TIMEZONE?: string;
   // LLM provider for the chat brain: "anthropic" (default) | "openai".
   // If unset and only OPENAI_API_KEY is present, auto-selects "openai".
   // (Voice transcription + embeddings always run on Cloudflare Workers AI.)

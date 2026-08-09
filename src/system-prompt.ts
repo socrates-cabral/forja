@@ -1,4 +1,5 @@
 import type { Env } from "./env";
+import { resolveBotTimezone } from "./config";
 
 export interface SystemPromptInput {
   botName: string;
@@ -185,6 +186,10 @@ export function systemPromptFromEnv(
     lessons: overrides?.lessons,
     // Siempre "ahora": todo despliegue real quiere la fecha del momento, no una
     // que le pase el llamador. Por eso no es parámetro de esta función.
-    today: new Date().toISOString().slice(0, 10),
+    // En la zona horaria del negocio (BOT_TIMEZONE), no en UTC — deuda técnica
+    // 2026-08-09: calcularlo en UTC hacía que una conversación de noche en
+    // Chile (UTC-3/-4) recibiera "hoy" adelantado un día, y con eso "mañana"
+    // terminaba agendándose dos días después de lo pedido.
+    today: new Intl.DateTimeFormat("en-CA", { timeZone: resolveBotTimezone(env) }).format(new Date()),
   });
 }
