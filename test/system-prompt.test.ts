@@ -99,6 +99,12 @@ describe("systemPromptFromEnv", () => {
     expect(prompt).toContain(`Hoy es ${new Date().toISOString().slice(0, 10)}`);
   });
 
+  it("core_principles instruye usar askWithOptions para preguntas de opción múltiple", () => {
+    const env = { BOT_NAME: "Bot", BUSINESS_NAME: "Acme", BOT_LANGUAGE: "es" } as any;
+    const prompt = systemPromptFromEnv(env, ["searchKb", "askWithOptions"], "ctx");
+    expect(prompt).toContain("askWithOptions");
+  });
+
   it("calcula 'hoy' en BOT_TIMEZONE, no en UTC — deuda técnica 2026-08-09", () => {
     // 2026-08-09T02:00:00Z: en UTC ya es 9 de agosto, pero en Santiago
     // (UTC-4 en agosto) todavía es 8 de agosto a las 22:00. Antes del fix,

@@ -420,22 +420,46 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
       toolCallsInLast2Turns: toolCallCount,
     });
 
-    // Chunk + send via the channel adapter
-    const chunks = chunkReply(assistantText, cfg.maxChunks);
+    // Chunk + send via the channel adapter. Si el modelo llamó askWithOptions,
+    // esa llamada YA es la respuesta completa del turno — se manda como
+    // interactive (botones/lista nativos o texto numerado, según el canal) y
+    // se ignora `assistantText` por completo, sin importar qué haya escrito el
+    // modelo además (evita el mensaje duplicado sin depender de que el modelo
+    // obedezca la regla de prompt a la perfección).
     const channel = this.state.channel as ChannelId;
     const adapter = pickAdapter(channel);
-    await adapter.sendReply(
-      {
-        channel,
-        channelUserId: this.state.channelUserId,
-        chunks,
-        interChunkDelayMs: cfg.interChunkDelayMs,
-      },
-      this.env,
-    );
+    // findLast() needs ES2023 lib (this project targets ES2022) — filter+pop
+    // gets the same "last matching call wins" semantics.
+    const askCall = toolCallsMade.filter((c) => c.toolName === "askWithOptions").pop();
+    let sentSummary: string;
+    if (askCall) {
+      const { pregunta, opciones } = askCall.input as { pregunta: string; opciones: string[] };
+      await adapter.sendReply(
+        {
+          channel,
+          channelUserId: this.state.channelUserId,
+          chunks: [],
+          interactive: { question: pregunta, options: opciones },
+        },
+        this.env,
+      );
+      sentSummary = "1 interactive prompt";
+    } else {
+      const chunks = chunkReply(assistantText, cfg.maxChunks);
+      await adapter.sendReply(
+        {
+          channel,
+          channelUserId: this.state.channelUserId,
+          chunks,
+          interChunkDelayMs: cfg.interChunkDelayMs,
+        },
+        this.env,
+      );
+      sentSummary = `${chunks.length} chunks`;
+    }
 
     console.log(
-      `[SupportAgent.processBuffer] sent ${chunks.length} chunks, model=${usedModelId}, cost=$${costOfUsage(
+      `[SupportAgent.processBuffer] sent ${sentSummary}, model=${usedModelId}, cost=$${costOfUsage(
         usedModelId,
         { input: inputTokens, cached: cachedTokens, output: outputTokens },
       ).toFixed(5)}`,
