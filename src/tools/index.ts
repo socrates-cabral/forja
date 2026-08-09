@@ -5,6 +5,7 @@ import { handoffHumanTool } from "./handoffHuman";
 import { pauseBotTool } from "./pauseBot";
 import { snoozeUserTool } from "./snoozeUser";
 import { captureLeadTool } from "./captureLead";
+import { askWithOptionsTool } from "./askWithOptions";
 import { scheduleAppointmentTool } from "./scheduleAppointment";
 import { calcomAvailabilityTool } from "./calcomAvailability";
 import { catalogQueryTool } from "./catalogQuery";
@@ -23,12 +24,15 @@ export function buildTools(ctx: ToolContext) {
   // Free tier base set. captureLead va aquí a propósito: el bot Starter (free)
   // captura prospectos — es el valor central de un bot de ventas. Lo Pro son las
   // tools más avanzadas por nicho (agendar citas, consultar catálogo/inventario).
+  // askWithOptions también va en el set base — es una mejora de experiencia de
+  // chat (botones en vez de texto libre), no una función de negocio avanzada.
   const tools: Record<string, any> = {
     searchKb: searchKbTool(ctx.env),
     handoffHuman: handoffHumanTool(ctx.env, ctx.getConversationId),
     pauseBot: pauseBotTool(ctx.env, ctx.getConversationId),
     snoozeUser: snoozeUserTool(ctx.env, ctx.getConversationId),
     captureLead: captureLeadTool(ctx.env, ctx.getConversationId),
+    askWithOptions: askWithOptionsTool(),
   };
 
   // Pro tier additions

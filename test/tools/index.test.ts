@@ -25,9 +25,10 @@ function makeCtx(tier: "free" | "pro", niche?: string): ToolContext {
 }
 
 describe("buildTools", () => {
-  it("registers the 5 free-tier tools (incluye captureLead)", () => {
+  it("registers the 6 free-tier tools (incluye captureLead y askWithOptions)", () => {
     const tools = buildTools(makeCtx("free"));
     expect(Object.keys(tools).sort()).toEqual([
+      "askWithOptions",
       "captureLead",
       "handoffHuman",
       "pauseBot",
@@ -39,6 +40,7 @@ describe("buildTools", () => {
   it("free tier captura leads pero excluye las Pro-only avanzadas", () => {
     const tools = buildTools(makeCtx("free"));
     expect(tools.captureLead).toBeDefined();
+    expect(tools.askWithOptions).toBeDefined();
     expect(tools.scheduleAppointment).toBeUndefined();
     expect(tools.catalogQuery).toBeUndefined();
   });
@@ -49,6 +51,7 @@ describe("buildTools", () => {
     (ctx.env as any).CALCOM_EVENT_TYPE_ID = "1";
     const tools = buildTools(ctx);
     expect(Object.keys(tools).sort()).toEqual([
+      "askWithOptions",
       "calcomAvailability",
       "captureLead",
       "catalogQuery",
@@ -66,6 +69,7 @@ describe("buildTools", () => {
   it("pro tier SIN Cal.com ni Dentalink configurados no registra ninguna tool de agendar — evita ofrecer una tool rota que el modelo intente usar y luego invente un resultado", () => {
     const tools = buildTools(makeCtx("pro"));
     expect(Object.keys(tools).sort()).toEqual([
+      "askWithOptions",
       "captureLead",
       "catalogQuery",
       "handoffHuman",
@@ -97,6 +101,7 @@ describe("buildTools", () => {
     (ctx.env as any).DENTALINK_DENTISTA_ID = "9";
     const tools = buildTools(ctx);
     expect(Object.keys(tools).sort()).toEqual([
+      "askWithOptions",
       "captureLead",
       "catalogQuery",
       "dentalinkAppointment",

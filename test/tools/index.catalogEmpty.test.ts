@@ -28,6 +28,7 @@ describe("buildTools — catálogo vacío", () => {
     const tools = buildTools(makeProCtx());
     expect(tools.catalogQuery).toBeUndefined();
     expect(Object.keys(tools).sort()).toEqual([
+      "askWithOptions",
       "captureLead",
       "handoffHuman",
       "pauseBot",

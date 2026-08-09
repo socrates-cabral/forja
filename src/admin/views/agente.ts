@@ -74,6 +74,11 @@ const TOOL_META: Record<string, ToolMeta> = {
     desc: "Guarda los datos del cliente interesado (nombre, contacto, intención) en la tabla de leads.",
     icon: "user-plus",
   },
+  askWithOptions: {
+    label: "Preguntar con opciones",
+    desc: "Muestra botones o una lista nativa en vez de esperar que el cliente escriba la opción exacta (ej. elegir su previsión).",
+    icon: "list-checks",
+  },
   scheduleAppointment: {
     label: "Agendar cita",
     desc: "Agenda una cita con el cliente y la registra para tu seguimiento.",
