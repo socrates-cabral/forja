@@ -62,6 +62,19 @@ describe("renderSystemPrompt", () => {
     const withoutPlaybook = renderSystemPrompt(input);
     expect(withoutPlaybook).not.toContain("{{NICHO_PLAYBOOK}}");
   });
+
+  it("inyecta <current_date> con la fecha exacta cuando se pasa today", () => {
+    const prompt = renderSystemPrompt({ ...input, today: "2026-08-08" });
+    expect(prompt).toContain("<current_date>");
+    expect(prompt).toContain("Hoy es 2026-08-08 (formato YYYY-MM-DD)");
+    expect(prompt).toContain("</current_date>");
+  });
+
+  it("omite el bloque <current_date> completo si no hay today", () => {
+    const prompt = renderSystemPrompt(input);
+    expect(prompt).not.toContain("<current_date>");
+    expect(prompt).not.toContain("Hoy es");
+  });
 });
 
 describe("systemPromptFromEnv", () => {
@@ -77,5 +90,12 @@ describe("systemPromptFromEnv", () => {
     expect(prompt).toContain("en");
     expect(prompt).toContain("- searchKb");
     expect(prompt).toContain("ctx here");
+  });
+
+  it("inyecta la fecha de hoy automáticamente (sin parámetro del llamador)", () => {
+    const env = { BOT_NAME: "Bot", BUSINESS_NAME: "Acme", BOT_LANGUAGE: "es" } as any;
+    const prompt = systemPromptFromEnv(env, ["searchKb"], "ctx");
+    expect(prompt).toContain("<current_date>");
+    expect(prompt).toContain(`Hoy es ${new Date().toISOString().slice(0, 10)}`);
   });
 });

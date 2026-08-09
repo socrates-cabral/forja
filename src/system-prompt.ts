@@ -10,6 +10,7 @@ export interface SystemPromptInput {
   tone?: string;                    // owner-chosen tone (e.g. "cálido y cercano")
   extraEscalationKeywords?: string[]; // extra words that trigger a human handoff
   lessons?: string[];               // flywheel: rules distilled from owner takeovers
+  today?: string;                   // YYYY-MM-DD — ancla para fechas relativas
 }
 
 const TEMPLATE = `<output_language>
@@ -32,6 +33,8 @@ Eres {{BOT_NAME}}, el asistente de {{BUSINESS_NAME}}. Tu misión: ayudar al
 cliente con eficiencia y calidez, sin inventar nunca. Conoces este negocio.
 Si una pregunta no tiene respuesta en lo que sabes, escalas a un humano.
 </role>
+
+{{CURRENT_DATE}}
 
 <business_context>
 {{BUSINESS_CONTEXT}}
@@ -113,6 +116,16 @@ export function renderSystemPrompt(input: SystemPromptInput): string {
       ? `\n- El cliente escribe alguna de estas palabras: ${extraKeywords.join(", ")}.`
       : "";
 
+  // Sin fecha, el modelo infiere "hoy" de su training data y agenda en el pasado.
+  const today = input.today?.trim();
+  const currentDateBlock = today
+    ? `<current_date>
+Hoy es ${today} (formato YYYY-MM-DD). Úsalo como referencia para calcular fechas
+relativas ("mañana", "el viernes que viene", "en dos semanas", etc.) — nunca asumas
+la fecha actual desde tu conocimiento de entrenamiento.
+</current_date>`
+    : "";
+
   const lessons = (input.lessons ?? []).map((l) => l.trim()).filter(Boolean);
   const lessonsBlock =
     lessons.length > 0
@@ -126,6 +139,7 @@ ${lessons.map((l) => `- ${l}`).join("\n")}
     .replaceAll("{{LANGUAGE}}", input.language)
     .replaceAll("{{BOT_NAME}}", input.botName)
     .replaceAll("{{BUSINESS_NAME}}", input.businessName)
+    .replaceAll("{{CURRENT_DATE}}", currentDateBlock)
     .replaceAll("{{BUSINESS_CONTEXT}}", input.businessContext)
     .replaceAll("{{TOOL_LIST}}", toolList)
     .replaceAll("{{NICHO_PLAYBOOK}}", input.nichoPlaybook ?? "")
@@ -158,5 +172,8 @@ export function systemPromptFromEnv(
     tone: overrides?.tone,
     extraEscalationKeywords: overrides?.extraEscalationKeywords,
     lessons: overrides?.lessons,
+    // Siempre "ahora": todo despliegue real quiere la fecha del momento, no una
+    // que le pase el llamador. Por eso no es parámetro de esta función.
+    today: new Date().toISOString().slice(0, 10),
   });
 }
