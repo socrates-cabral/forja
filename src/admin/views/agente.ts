@@ -84,6 +84,21 @@ const TOOL_META: Record<string, ToolMeta> = {
     desc: "Consulta el catálogo de productos/servicios del negocio para responder con precios y opciones reales.",
     icon: "package",
   },
+  calcomAvailability: {
+    label: "Ver disponibilidad (Cal.com)",
+    desc: "Consulta horarios realmente libres en Cal.com antes de ofrecer una hora — nunca inventa un horario.",
+    icon: "calendar-search",
+  },
+  dentalinkAvailability: {
+    label: "Ver disponibilidad (Dentalink)",
+    desc: "Consulta horarios realmente libres en Dentalink antes de ofrecer una hora — nunca inventa un horario.",
+    icon: "calendar-search",
+  },
+  dentalinkAppointment: {
+    label: "Agendar en Dentalink",
+    desc: "Agenda la cita directo en Dentalink (busca o crea el paciente, confirma el cupo, crea la cita real).",
+    icon: "calendar-plus",
+  },
 };
 
 function toolMeta(name: string): ToolMeta {

@@ -90,6 +90,42 @@ describe("Mi Agente — page and canvas", () => {
     const res = await adminApp.request("/agente", {}, env);
     expect(res.status).toBe(401);
   });
+
+  it("calcomAvailability muestra su propio ícono en el canvas (no el genérico wrench)", async () => {
+    // ya trae CALCOM_API_KEY + CALCOM_EVENT_TYPE_ID del beforeEach
+    const res = await adminApp.request("/agente", { headers: AUTH }, env);
+    const html = await res.text();
+    expect(html).toContain('data-lucide="calendar-search"');
+  });
+
+  it("los paneles de detalle de calcomAvailability/dentalinkAvailability/dentalinkAppointment tienen su propio nombre — no caen al genérico 'Tool personalizada'", async () => {
+    const resCalcom = await adminApp.request("/agente/node/tool%3AcalcomAvailability", { headers: AUTH }, env);
+    expect(await resCalcom.text()).toContain("Ver disponibilidad (Cal.com)");
+
+    const envDentalink = {
+      ...env,
+      CALCOM_API_KEY: undefined,
+      CALCOM_EVENT_TYPE_ID: undefined,
+      DENTALINK_API_TOKEN: "tok",
+      DENTALINK_SUCURSAL_ID: "1",
+      DENTALINK_DENTISTA_ID: "9",
+    } as any;
+    const resAvail = await adminApp.request(
+      "/agente/node/tool%3AdentalinkAvailability",
+      { headers: AUTH },
+      envDentalink,
+    );
+    expect(await resAvail.text()).toContain("Ver disponibilidad (Dentalink)");
+
+    const resAppt = await adminApp.request(
+      "/agente/node/tool%3AdentalinkAppointment",
+      { headers: AUTH },
+      envDentalink,
+    );
+    const htmlAppt = await resAppt.text();
+    expect(htmlAppt).toContain("Agendar en Dentalink");
+    expect(htmlAppt).not.toContain("Tool personalizada de esta instancia");
+  });
 });
 
 describe("Mi Agente — node panels", () => {
