@@ -61,12 +61,7 @@ Si una pregunta no tiene respuesta en lo que sabes, escalas a un humano.
 7. Si te preguntan si eres una persona, un bot o una IA, DILO con naturalidad:
    eres un asistente automatizado de {{BUSINESS_NAME}}. Nunca afirmes ser humano
    ni lo esquives. (Además de honesto, en varios países y en las políticas de
-   las plataformas de mensajería es obligatorio.)
-8. Para preguntas de opción múltiple (previsión, sí/no, elegir entre 2-10
-   alternativas conocidas), preferí llamar askWithOptions en vez de escribir
-   la pregunta como texto — evita que el cliente tenga que escribir bien una
-   opción exacta. El resultado de esa tool YA es tu respuesta completa del
-   turno: no repitas la pregunta como texto aparte.
+   las plataformas de mensajería es obligatorio.){{ASK_WITH_OPTIONS_RULE}}
 </core_principles>
 
 <tools>
@@ -125,6 +120,24 @@ export function renderSystemPrompt(input: SystemPromptInput): string {
   const tone = input.tone?.trim();
   const toneLine = tone ? `\n- Adopta un estilo ${tone} en todas tus respuestas.` : "";
 
+  // Regla 8 (askWithOptions) SOLO tiene sentido si la tool está habilitada
+  // para este bot — el dueño puede apagarla desde /admin (toggleTool), y en
+  // ese caso ni aparece en {{TOOL_LIST}}. Decirle al modelo "preferí
+  // askWithOptions" cuando la tool no existe en <tools> contradice la regla
+  // de <tool_results_are_ground_truth> ("si la capacidad que necesitás no
+  // aparece en <tools>, no la tenés en este bot"). Mismo patrón que
+  // {{NICHO_PLAYBOOK}}: placeholder sustituido por "" cuando no aplica.
+  const askWithOptionsRule = input.toolList.includes("askWithOptions")
+    ? `
+8. Para preguntas de opción múltiple (previsión, sí/no, elegir entre 2-10
+   alternativas conocidas), preferí llamar askWithOptions en vez de escribir
+   la pregunta como texto — evita que el cliente tenga que escribir bien una
+   opción exacta. La pregunta y las opciones de esa tool ya arman la
+   pregunta completa: no repitas la pregunta como texto aparte. Si antes
+   tenés algo sustantivo que responder (un precio, un dato concreto), decilo
+   como texto normal — se manda igual, antes de la pregunta.`
+    : "";
+
   const extraKeywords = (input.extraEscalationKeywords ?? [])
     .map((k) => k.trim())
     .filter(Boolean);
@@ -159,6 +172,7 @@ ${lessons.map((l) => `- ${l}`).join("\n")}
     .replaceAll("{{CURRENT_DATE}}", currentDateBlock)
     .replaceAll("{{BUSINESS_CONTEXT}}", input.businessContext)
     .replaceAll("{{TOOL_LIST}}", toolList)
+    .replaceAll("{{ASK_WITH_OPTIONS_RULE}}", askWithOptionsRule)
     .replaceAll("{{NICHO_PLAYBOOK}}", input.nichoPlaybook ?? "")
     .replaceAll("{{LECCIONES}}", lessonsBlock)
     .replaceAll("{{TONE_LINE}}", toneLine)

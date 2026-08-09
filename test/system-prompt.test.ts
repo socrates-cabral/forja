@@ -110,11 +110,16 @@ describe("systemPromptFromEnv", () => {
     expect(corePrinciples).toContain("no repitas la pregunta como texto aparte");
   });
 
-  it("la regla de askWithOptions vive en el prompt base, no depende de que la tool esté en toolList", () => {
+  it("la regla de askWithOptions NO aparece si la tool no está en toolList (Hallazgo 2)", () => {
+    // Antes de este fix la regla vivía hardcodeada en el TEMPLATE, así que
+    // aparecía SIEMPRE — incluso cuando el dueño apagó askWithOptions desde
+    // /admin y la tool ni siquiera está en <tools>. Eso le decía al modelo
+    // "usá askWithOptions" y "no uses tools fuera de <tools>" al mismo
+    // tiempo, en el mismo prompt.
     const env = { BOT_NAME: "Bot", BUSINESS_NAME: "Acme", BOT_LANGUAGE: "es" } as any;
     const prompt = systemPromptFromEnv(env, ["searchKb"], "ctx");
     const corePrinciples = prompt.split("<core_principles>")[1].split("</core_principles>")[0];
-    expect(corePrinciples).toContain("askWithOptions");
+    expect(corePrinciples).not.toContain("askWithOptions");
   });
 
   it("calcula 'hoy' en BOT_TIMEZONE, no en UTC — deuda técnica 2026-08-09", () => {
