@@ -416,25 +416,34 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
       }
     }
 
-    // Si el modelo llamó askWithOptions, esa llamada YA es la respuesta
-    // completa del turno — se manda como interactive (botones/lista nativos o
-    // texto numerado, según el canal) y se ignora `assistantText` por
-    // completo, sin importar qué haya escrito el modelo además (evita el
-    // mensaje duplicado sin depender de que el modelo obedezca la regla de
-    // prompt a la perfección). Calculado ANTES del persist de abajo: la regla
-    // 8 le pide al modelo no repetir la pregunta como texto, así que
-    // `assistantText` suele venir vacío en estos turnos — persistir ese vacío
-    // rompería el turno siguiente (Anthropic rechaza un content block de
-    // texto vacío en el historial). Se persiste en su lugar lo que
-    // REALMENTE se mandó al cliente.
+    // Si el modelo llamó askWithOptions, esa llamada arma el interactive
+    // (botones/lista nativos o texto numerado, según el canal). Calculado
+    // ANTES del persist de abajo: la regla 8 le pide al modelo no repetir la
+    // pregunta como texto, así que `assistantText` suele venir vacío en
+    // estos turnos — persistir ese vacío rompería el turno siguiente
+    // (Anthropic rechaza un content block de texto vacío en el historial).
     // findLast() needs ES2023 lib (this project targets ES2022) — filter+pop
     // gets the same "last matching call wins" semantics.
     const askCall = toolCallsMade.filter((c) => c.toolName === "askWithOptions").pop();
-    const persistedText = askCall
+    const interactiveText = askCall
       ? renderInteractiveAsText({
           question: (askCall.input as { pregunta: string; opciones: string[] }).pregunta,
           options: (askCall.input as { pregunta: string; opciones: string[] }).opciones,
         })
+      : undefined;
+    // Hallazgo 3 (revisión final): si el modelo respondió algo sustantivo
+    // ANTES de ofrecer el follow-up ("El control cuesta $30.000." + luego
+    // askWithOptions("¿Agendamos?", ...)), ese texto ya NO se descarta —
+    // decisión del dueño: se manda como mensaje real y se persiste junto con
+    // la pregunta, así D1 queda como un registro fiel de todo lo que recibió
+    // el cliente en el turno. Cuando `assistantText` viene vacío (el caso
+    // común, porque la regla 8 le pide al modelo no repetir la pregunta),
+    // el comportamiento es el de siempre: solo el interactive.
+    const hasRealText = assistantText.trim().length > 0;
+    const persistedText = askCall
+      ? hasRealText
+        ? `${assistantText}\n\n${interactiveText}`
+        : interactiveText!
       : assistantText;
 
     // Persist assistant message (with usage + model_used + tool calls)
@@ -458,6 +467,25 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
     let sentSummary: string;
     if (askCall) {
       const { pregunta, opciones } = askCall.input as { pregunta: string; opciones: string[] };
+      let chunks: string[] = [];
+      // Hallazgo 3: texto sustantivo antes del follow-up se manda como
+      // mensaje real PRIMERO, y el interactive DESPUÉS, en una segunda
+      // llamada — nada se descarta. No hay precedente en el codebase de un
+      // delay artificial ENTRE dos sendReply() distintos (interChunkDelayMs
+      // solo pacea chunks dentro de una misma llamada), así que no se
+      // inventa uno acá.
+      if (hasRealText) {
+        chunks = chunkReply(assistantText, cfg.maxChunks);
+        await adapter.sendReply(
+          {
+            channel,
+            channelUserId: this.state.channelUserId,
+            chunks,
+            interChunkDelayMs: cfg.interChunkDelayMs,
+          },
+          this.env,
+        );
+      }
       await adapter.sendReply(
         {
           channel,
@@ -467,7 +495,9 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
         },
         this.env,
       );
-      sentSummary = "1 interactive prompt";
+      sentSummary = hasRealText
+        ? `${chunks.length} chunks + 1 interactive prompt`
+        : "1 interactive prompt";
     } else {
       const chunks = chunkReply(assistantText, cfg.maxChunks);
       await adapter.sendReply(

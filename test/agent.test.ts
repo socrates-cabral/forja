@@ -138,23 +138,27 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     vi.restoreAllMocks();
   });
 
-  it("si el modelo llamó askWithOptions, manda interactive en vez de chunks de texto", async () => {
+  it("si el modelo llamó askWithOptions CON texto sustantivo, manda el texto y DESPUÉS el interactive (Hallazgo 3)", async () => {
+    // Antes de este fix, `assistantText` se descartaba SIEMPRE que hubiera un
+    // askCall — bien cuando el modelo solo repetía la pregunta (rule 8), mal
+    // cuando el modelo respondía algo real antes ("El control cuesta
+    // $30.000.") y ofrecía un follow-up ("¿Agendamos?"): el cliente nunca
+    // veía el precio, y ni siquiera quedaba en D1. Decisión del dueño: si
+    // hay texto sustantivo, se manda como mensaje de texto normal PRIMERO,
+    // y el interactive DESPUÉS — nada se descarta.
     const { agent } = makeAgentForToolCallTest();
 
     streamTextMock.mockReset();
     streamTextMock.mockImplementation(() =>
-      // The model ALSO wrote normal assistant text alongside the tool call —
-      // the point of this test is that it must be ignored, not just that
-      // `interactive` happens to also be present.
-      makeToolCallStreamResult("Dale, ¿cuál es tu previsión?", {
+      makeToolCallStreamResult("El control cuesta $30.000.", {
         toolName: "askWithOptions",
-        input: { pregunta: "¿Cuál es tu previsión?", opciones: ["Fonasa", "Isapre"] },
+        input: { pregunta: "¿Agendamos?", opciones: ["Sí", "No"] },
       }),
     );
 
     vi.spyOn(MessagesRepo.prototype, "append").mockResolvedValue(undefined as any);
     vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
-      { role: "user", content: "quiero agendar" },
+      { role: "user", content: "cuánto cuesta el control" },
     ] as any);
     vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
       undefined as any,
@@ -165,19 +169,57 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
       sendReply: sendReplySpy,
     } as any);
 
-    agent.state.pendingMessages = [{ text: "quiero agendar", receivedAt: Date.now() }];
+    agent.state.pendingMessages = [{ text: "cuánto cuesta el control", receivedAt: Date.now() }];
     await agent.processBuffer();
 
-    expect(sendReplySpy).toHaveBeenCalledTimes(1);
-    expect(sendReplySpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        interactive: { question: "¿Cuál es tu previsión?", options: ["Fonasa", "Isapre"] },
+    expect(sendReplySpy).toHaveBeenCalledTimes(2);
+    // 1ª llamada: el texto real, como chunks normales, SIN interactive.
+    const [firstReply] = sendReplySpy.mock.calls[0];
+    expect(firstReply.chunks).toEqual(["El control cuesta $30.000."]);
+    expect(firstReply.interactive).toBeUndefined();
+    // 2ª llamada: el prompt interactivo, con chunks vacíos.
+    const [secondReply] = sendReplySpy.mock.calls[1];
+    expect(secondReply.chunks).toEqual([]);
+    expect(secondReply.interactive).toEqual({ question: "¿Agendamos?", options: ["Sí", "No"] });
+  });
+
+  it("persiste en D1 el texto real + la pregunta renderizada, concatenados (Hallazgo 3)", async () => {
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      makeToolCallStreamResult("El control cuesta $30.000.", {
+        toolName: "askWithOptions",
+        input: { pregunta: "¿Agendamos?", opciones: ["Sí", "No"] },
       }),
-      expect.anything(),
     );
-    // Not sent with chunks containing the normal assistant text in that same call.
-    const sentReply = sendReplySpy.mock.calls[0][0];
-    expect(sentReply.chunks).toEqual([]);
+
+    const appendSpy = vi.fn(
+      async (_convId: string, _role: string, _content: string, _opts?: any) => "msg-id",
+    );
+    vi.spyOn(MessagesRepo.prototype, "append").mockImplementation(appendSpy as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "cuánto cuesta el control" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: vi.fn(async () => {}),
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "cuánto cuesta el control", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    const assistantCall = appendSpy.mock.calls.find((call) => call[1] === "assistant");
+    expect(assistantCall).toBeDefined();
+    const [, , persistedContent] = assistantCall!;
+    // D1 debe quedar como un registro fiel de TODO lo que recibió el cliente
+    // en este turno: el precio real Y la pregunta de seguimiento.
+    expect(persistedContent).toContain("El control cuesta $30.000.");
+    expect(persistedContent).toContain("¿Agendamos?");
+    expect(persistedContent).toContain("Sí");
+    expect(persistedContent).toContain("No");
   });
 
   it("persiste el texto de pregunta+opciones en D1, no el assistantText descartado (Hallazgo 2)", async () => {
@@ -206,8 +248,9 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
       undefined as any,
     );
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
     vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
-      sendReply: vi.fn(async () => {}),
+      sendReply: sendReplySpy,
     } as any);
 
     agent.state.pendingMessages = [{ text: "quiero agendar", receivedAt: Date.now() }];
@@ -224,6 +267,13 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     expect(persistedContent).toContain("¿Cuál es tu previsión?");
     expect(persistedContent).toContain("Fonasa");
     expect(persistedContent).toContain("Isapre");
+    // assistantText vacío (Hallazgo 3 no aplica): un solo sendReply, solo interactive.
+    expect(sendReplySpy).toHaveBeenCalledTimes(1);
+    const [onlyReply] = sendReplySpy.mock.calls[0];
+    expect(onlyReply.interactive).toEqual({
+      question: "¿Cuál es tu previsión?",
+      options: ["Fonasa", "Isapre"],
+    });
   });
 
   it("sin askWithOptions, manda chunks de texto normal (comportamiento preexistente, Hallazgo 3)", async () => {
