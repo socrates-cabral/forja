@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createTestMiniflare } from "../helpers/miniflareSetup";
 import { Db } from "../../src/db/client";
 import { ConversationsRepo } from "../../src/db/conversations";
-import { LeadsRepo } from "../../src/db/leads";
+import { LeadsRepo, leadMetadata } from "../../src/db/leads";
 import { captureLeadTool } from "../../src/tools/captureLead";
 
 let env: any;
@@ -39,5 +39,32 @@ describe("captureLeadTool", () => {
     const list = await leads.list(10);
     expect(list).toHaveLength(1);
     expect(list[0].intent).toBe("Corte + barba 5pm");
+  });
+
+  it("persiste metadata del nicho (tratamiento/prevision/fecha_cita) en la columna metadata", async () => {
+    const tool = captureLeadTool(env, () => convId);
+    await tool.execute!(
+      {
+        name: "Ana Pérez",
+        contact: "+56912345678",
+        intent: "Limpieza dental",
+        metadata: { tratamiento: "Limpieza", prevision: "Fonasa", fecha_cita: "2026-08-12" },
+      },
+      {} as any,
+    );
+    const list = await leads.list(10);
+    expect(list).toHaveLength(1);
+    expect(leadMetadata(list[0])).toEqual({
+      tratamiento: "Limpieza",
+      prevision: "Fonasa",
+      fecha_cita: "2026-08-12",
+    });
+  });
+
+  it("sin metadata la columna queda null (no rompe el flujo genérico)", async () => {
+    const tool = captureLeadTool(env, () => convId);
+    await tool.execute!({ intent: "Consulta suelta" }, {} as any);
+    const list = await leads.list(10);
+    expect(list[0].metadata).toBeNull();
   });
 });

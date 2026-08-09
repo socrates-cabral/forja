@@ -13,8 +13,14 @@ export function captureLeadTool(env: Env, getConversationId: () => string | null
       contact: z.string().optional().describe("Teléfono o email"),
       intent: z.string().describe("Qué quiere el cliente, en 1-2 frases"),
       notes: z.string().optional(),
+      metadata: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe(
+          "Campos propios del nicho de negocio (ej. tratamiento, previsión, fecha_cita para clínicas dentales). Opcional.",
+        ),
     }),
-    execute: async ({ name, contact, intent, notes }) => {
+    execute: async ({ name, contact, intent, notes, metadata }) => {
       const convId = getConversationId();
       const leads = new LeadsRepo(new Db(env.DB));
       const leadId = await leads.create({
@@ -24,6 +30,7 @@ export function captureLeadTool(env: Env, getConversationId: () => string | null
         channelUserId: null,
         intent,
         notes,
+        metadata,
       });
 
       // Optional external export — Pro-tier feature, skipped if no creds
