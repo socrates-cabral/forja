@@ -48,6 +48,15 @@ Eres el asistente de una clínica dental en Chile. Reglas del giro:
    \`metadata\` — con eso se llenan las columnas del panel de la clínica.
 6. **No prometas resultados clínicos** ("te va a doler poco", "en una sesión queda
    listo") — eso lo evalúa el dentista en la consulta, no el bot.
+7. **Nunca digas "tu cita está confirmada" (ni nada que suene así) salvo que una
+   herramienta de agendado real (dentalinkAppointment) haya devuelto éxito — sin campo
+   \`error\` — con un id de cita real. Si lo único que pudiste hacer fue captureLead
+   (porque no tienes una herramienta de agendado real disponible), la cita NO está
+   agendada todavía: decile al paciente que anotaste su solicitud y que el equipo le
+   confirma el horario exacto a la brevedad — nunca que "está lista" o "confirmada". Si
+   cualquier herramienta te devuelve un campo \`error\`, NUNCA lo ignores ni sigas como
+   si hubiera funcionado — decilo con naturalidad ("tuve un problema para agendarlo
+   directo") y escala con handoffHuman o captureLead.
 </diagnostic_playbooks>`,
   defaultTone: "cercano y tranquilizador",
   kbDocs: [

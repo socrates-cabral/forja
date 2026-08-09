@@ -33,8 +33,11 @@ describe("buildTools", () => {
     expect(tools.catalogQuery).toBeUndefined();
   });
 
-  it("pro tier has the 5 base tools plus the 2 Pro tools", () => {
-    const tools = buildTools(makeCtx("pro"));
+  it("pro tier con Cal.com configurado agrega scheduleAppointment además de catalogQuery", () => {
+    const ctx = makeCtx("pro");
+    (ctx.env as any).CALCOM_API_KEY = "cal_x";
+    (ctx.env as any).CALCOM_EVENT_TYPE_ID = "1";
+    const tools = buildTools(ctx);
     expect(Object.keys(tools).sort()).toEqual([
       "captureLead",
       "catalogQuery",
@@ -46,6 +49,21 @@ describe("buildTools", () => {
     ]);
     expect(tools.scheduleAppointment).toBeDefined();
     expect(tools.catalogQuery).toBeDefined();
+  });
+
+  it("pro tier SIN Cal.com ni Dentalink configurados no registra ninguna tool de agendar — evita ofrecer una tool rota que el modelo intente usar y luego invente un resultado", () => {
+    const tools = buildTools(makeCtx("pro"));
+    expect(Object.keys(tools).sort()).toEqual([
+      "captureLead",
+      "catalogQuery",
+      "handoffHuman",
+      "pauseBot",
+      "searchKb",
+      "snoozeUser",
+    ]);
+    expect(tools.scheduleAppointment).toBeUndefined();
+    expect(tools.dentalinkAvailability).toBeUndefined();
+    expect(tools.dentalinkAppointment).toBeUndefined();
   });
 
   it("el Starter genérico no agrega tools de nicho (aunque BOT_NICHE traiga un giro)", () => {

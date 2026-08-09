@@ -10,6 +10,7 @@ import { catalogQueryTool } from "./catalogQuery";
 import { dentalinkAvailabilityTool } from "./dentalinkAvailability";
 import { dentalinkAppointmentTool } from "./dentalinkAppointment";
 import { dentalinkConfigured } from "../integrations/dentalink";
+import { calcomConfigured } from "../integrations/calcom";
 
 export interface ToolContext {
   env: Env;
@@ -34,11 +35,15 @@ export function buildTools(ctx: ToolContext) {
 
     // Agenda de citas: Dentalink y Cal.com son mutuamente excluyentes — una
     // clínica que configuró Dentalink no necesita (ni debe ver) la tool
-    // genérica de Cal.com, y viceversa.
+    // genérica de Cal.com, y viceversa. Y ninguna de las dos se registra si
+    // no está realmente configurada: una tool visible-pero-rota invita al
+    // modelo a "usarla" y luego inventar un resultado cuando falla (bug real
+    // observado 2026-08-09 — el bot declaró una cita "confirmada" tras un
+    // scheduleAppointment que devolvió calcom_not_configured).
     if (dentalinkConfigured(ctx.env)) {
       tools.dentalinkAvailability = dentalinkAvailabilityTool(ctx.env);
       tools.dentalinkAppointment = dentalinkAppointmentTool(ctx.env, ctx.getConversationId);
-    } else {
+    } else if (calcomConfigured(ctx.env)) {
       tools.scheduleAppointment = scheduleAppointmentTool(ctx.env, ctx.getConversationId);
     }
   }

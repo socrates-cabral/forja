@@ -49,6 +49,7 @@ describe("getNiche — dentista", () => {
     expect(n.statusLabels.sold).toBe("Cita agendada");
     expect(n.columns.map((c) => c.key)).toEqual(["tratamiento", "prevision", "fecha_cita"]);
     expect(n.playbook).toContain("Previsión primero");
+    expect(n.playbook).toContain('Nunca digas "tu cita está confirmada"');
     expect(n.defaultTone).toBe("cercano y tranquilizador");
     expect(n.kbDocs.length).toBeGreaterThan(0);
   });

@@ -39,6 +39,11 @@ beforeEach(async () => {
     BOT_TIER: "pro",
     BUFFER_SECONDS: "8",
     DASHBOARD_PASSWORD: PASSWORD,
+    // scheduleAppointment ya no se registra sin Cal.com configurado (evita
+    // ofrecer al modelo una tool rota que no puede cumplir) — estos tests
+    // asumen el toolset Pro completo, así que necesitan Cal.com "configurado".
+    CALCOM_API_KEY: "cal_test",
+    CALCOM_EVENT_TYPE_ID: "1",
   } as unknown as Env;
   settings = new SettingsRepo(new Db(d1));
 });
