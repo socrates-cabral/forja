@@ -45,4 +45,37 @@ describe("handoffHumanTool", () => {
     expect(list).toHaveLength(1);
     expect(list[0].summary).toContain("María");
   });
+
+  it("notified queda vacío cuando no hay NINGÚN canal de aviso configurado — el modelo debe poder distinguirlo", async () => {
+    const envNoChannels = { ...env, RESEND_API_KEY: undefined };
+    const tool = handoffHumanTool(envNoChannels, () => convId);
+    const result = (await tool.execute!(
+      { reason: "x", summary: "y", category: "other" },
+      {} as any,
+    )) as { ticketId: string; notified: string[] };
+    expect(result.ticketId).toBeTruthy();
+    expect(result.notified).toEqual([]);
+  });
+
+  it("notified incluye 'email' cuando Resend confirma el envío, y escapa HTML del cliente en el cuerpo", async () => {
+    const fetchMock = vi.fn(async (url: any, _init: any) =>
+      String(url).includes("resend.com")
+        ? new Response(JSON.stringify({ id: "re_123" }), { status: 200 })
+        : new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const tool = handoffHumanTool(env, () => convId);
+    const result = (await tool.execute!(
+      { reason: "x", summary: "<script>alert(1)</script>", category: "complaint" },
+      {} as any,
+    )) as { ticketId: string; notified: string[] };
+    expect(result.notified).toContain("email");
+
+    const resendCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("resend.com"));
+    expect(resendCall).toBeTruthy();
+    const payload = JSON.parse(String((resendCall![1] as RequestInit).body));
+    expect(payload.html).not.toContain("<script>alert(1)</script>");
+    expect(payload.html).toContain("&lt;script&gt;");
+    vi.unstubAllGlobals();
+  });
 });

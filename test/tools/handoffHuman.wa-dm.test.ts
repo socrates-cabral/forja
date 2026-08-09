@@ -62,6 +62,28 @@ describe("handoffHumanTool — owner WhatsApp notification (Pro)", () => {
     expect(body).not.toContain("Body="); // free text is forbidden for business-initiated WA
   });
 
+  it("notified incluye 'whatsapp' cuando Twilio confirma el envío", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ sid: "SMxxx" }), { status: 201 }),
+    );
+    const tool = handoffHumanTool(env, () => convId);
+    const result = (await tool.execute!(
+      { reason: "complejo", summary: "cliente quiere reembolso", category: "billing" },
+      {} as any,
+    )) as { notified: string[] };
+    expect(result.notified).toContain("whatsapp");
+  });
+
+  it("notified NO incluye 'whatsapp' cuando Twilio responde error", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+    const tool = handoffHumanTool(env, () => convId);
+    const result = (await tool.execute!(
+      { reason: "x", summary: "y", category: "other" },
+      {} as any,
+    )) as { notified: string[] };
+    expect(result.notified).not.toContain("whatsapp");
+  });
+
   it("does NOT send WhatsApp when no approved template SID is configured", async () => {
     fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("{}", { status: 200 }),
