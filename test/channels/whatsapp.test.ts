@@ -39,6 +39,7 @@ describe("parseWhatsAppEvents", () => {
     expect(out[0].channelUserId).toBe("5215512345678");
     expect(out[0].text).toBe("hola");
     expect(out[0].displayName).toBe("María");
+    expect(out[0].isInteractiveReply).toBeFalsy();
   });
 
   it("parsea imagen con caption a una URL de media firmada", async () => {
@@ -98,6 +99,10 @@ describe("parseWhatsAppEvents", () => {
       ORIGIN,
     );
     expect(out[0].text).toBe("Fonasa");
+    // Hallazgo 1: el guard anti-spam debe saltear el chequeo de repetición
+    // para estos taps — llegan siempre con el mismo texto, a diferencia de
+    // texto libre tipeado.
+    expect(out[0].isInteractiveReply).toBe(true);
   });
 
   it("parsea el toque de una opción de lista (interactive/list_reply)", async () => {
@@ -114,6 +119,7 @@ describe("parseWhatsAppEvents", () => {
       ORIGIN,
     );
     expect(out[0].text).toBe("Particular");
+    expect(out[0].isInteractiveReply).toBe(true);
   });
 });
 

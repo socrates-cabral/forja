@@ -46,6 +46,7 @@ describe("telegramAdapter.parseIncoming", () => {
     expect(msg.channelUserId).toBe("555");
     expect(msg.text).toBe("hola");
     expect(msg.displayName).toBe("Ana");
+    expect(msg.isInteractiveReply).toBeFalsy();
   });
 
   it("resolves voice notes to a real download URL via getFile", async () => {
@@ -128,6 +129,10 @@ describe("telegramAdapter.parseIncoming", () => {
     expect(msg.channel).toBe("telegram");
     expect(msg.channelUserId).toBe("555");
     expect(msg.text).toBe("Fonasa");
+    // Hallazgo 1: el guard anti-spam debe saltear el chequeo de repetición
+    // para estos taps — llegan siempre con el mismo texto, a diferencia de
+    // texto libre tipeado.
+    expect(msg.isInteractiveReply).toBe(true);
     const ackCall = fetchSpy.mock.calls.find((c) => String(c[0]).includes("answerCallbackQuery"));
     expect(ackCall).toBeTruthy();
     const body = JSON.parse(String((ackCall![1] as RequestInit).body));

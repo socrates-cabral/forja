@@ -8,6 +8,11 @@ export interface IncomingMessage {
   audioUrl?: string;
   imageUrl?: string;
   isOwnerMessage?: boolean;
+  /** El texto vino de tocar un botón/opción de lista, no de tipearlo — ver
+   * askWithOptions. Un tap repite SIEMPRE el mismo texto (a diferencia del
+   * texto libre, que varía natural entre "si"/"sí"/"dale"), así que el guard
+   * anti-spam de repetición (spam.ts) debe saltearlo para este mensaje. */
+  isInteractiveReply?: boolean;
   receivedAt: number;
   rawPayload: unknown;
 }

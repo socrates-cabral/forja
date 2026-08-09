@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createTestMiniflare } from "./helpers/miniflareSetup";
+import { Db } from "../src/db/client";
 
 let mf: Awaited<ReturnType<typeof createTestMiniflare>>;
 
@@ -254,5 +255,97 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     const sentReply = sendReplySpy.mock.calls[0][0];
     expect(sentReply.chunks).toEqual(["Claro, tenemos turno mañana a las 10am."]);
     expect(sentReply.interactive).toBeUndefined();
+  });
+});
+
+// --- Hallazgo 1 (revisión final): el guard anti-spam no debe silenciar taps
+// de botones/lista --------------------------------------------------------
+//
+// isRepeatSpam() se dispara cuando el texto ENTRANTE coincide con 2+ de los
+// últimos 5 mensajes de usuario YA PERSISTIDOS en D1 (persistidos por
+// processBuffer(), no por ingest()). Estas pruebas corren ingest() contra un
+// D1 real (miniflare, mismo helper que test/spam.test.ts) con 2 mensajes
+// idénticos ya sembrados directamente en la tabla `messages` — así el 3er
+// mensaje entrante (el que procesa ingest() en la prueba) es justo el que
+// decide si el guard dispara o no.
+describe("SupportAgent.ingest — el guard anti-spam saltea taps interactivos (Hallazgo 1)", () => {
+  let realDb: any;
+  let db: InstanceType<typeof Db>;
+  let convs: InstanceType<typeof ConversationsRepo>;
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    stubSettings();
+    const localMf = await createTestMiniflare();
+    realDb = await localMf.getD1Database("DB");
+    db = new Db(realDb);
+    convs = new ConversationsRepo(db);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function seedTwoRepeats(channelUserId: string, text: string) {
+    const conv = await convs.getOrCreate("telegram", channelUserId);
+    for (let i = 0; i < 2; i++) {
+      await db.run(
+        `INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)`,
+        [crypto.randomUUID(), conv.id, text, Date.now() - (2 - i) * 1000],
+      );
+    }
+    return conv;
+  }
+
+  function makeAgentWithRealDb() {
+    const storage = { setAlarm: vi.fn(), getAlarm: vi.fn() };
+    const env: any = {
+      DB: realDb,
+      BOT_TIER: "free",
+      BOT_LANGUAGE: "es",
+      BUFFER_SECONDS: "8",
+      BOT_NAME: "TestBot",
+      BUSINESS_NAME: "TestCo",
+    };
+    const agent: any = new (SupportAgent as any)({ storage }, env);
+    agent.setState({
+      conversationId: null,
+      channel: "",
+      channelUserId: "",
+      pendingMessages: [],
+      lastAlarmAt: 0,
+      lastUserLang: "es",
+      toolCallsInLast2Turns: 0,
+      lastSearchKbScore: 1,
+      imageRetryCount: 0,
+    });
+    return agent;
+  }
+
+  it("un 3er tap de botón idéntico (isInteractiveReply) NO dispara el cooldown de 1h", async () => {
+    const conv = await seedTwoRepeats("u-btn", "Sí");
+    const agent = makeAgentWithRealDb();
+
+    await agent.ingest({
+      channel: "telegram",
+      channelUserId: "u-btn",
+      text: "Sí",
+      isInteractiveReply: true,
+    });
+
+    expect(await convs.isPaused(conv.id)).toBe(false);
+  });
+
+  it("un 3er mensaje TIPEADO idéntico (sin isInteractiveReply) sigue disparando el cooldown (regresión)", async () => {
+    const conv = await seedTwoRepeats("u-typed", "Sí");
+    const agent = makeAgentWithRealDb();
+
+    await agent.ingest({
+      channel: "telegram",
+      channelUserId: "u-typed",
+      text: "Sí",
+    });
+
+    expect(await convs.isPaused(conv.id)).toBe(true);
   });
 });

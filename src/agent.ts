@@ -39,6 +39,10 @@ export interface AgentIncomingPayload {
   audioUrl?: string;
   imageUrl?: string;
   isOwnerMessage?: boolean;
+  /** Tap de botón/lista (askWithOptions) en vez de texto tipeado — ver
+   * IncomingMessage en channels/shared.ts. El guard anti-spam de repetición
+   * lo saltea (Hallazgo 1: 3+ taps idénticos no deben silenciar al bot). */
+  isInteractiveReply?: boolean;
 }
 
 export class SupportAgent extends Agent<Env, SupportAgentState> {
@@ -91,7 +95,14 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
       try {
         const { isRepeatSpam, SPAM_SNOOZE_MS, isOverDailyCap, DAILY_CAP_SNOOZE_MS, DAILY_CAP_MESSAGE } =
           await import("./spam");
-        if (await isRepeatSpam(db, conv.id, payload.text)) {
+        // Un tap de botón/lista (askWithOptions) repite SIEMPRE el mismo
+        // texto — a diferencia de texto libre tipeado, que varía natural
+        // ("si"/"sí"/"dale"/"claro"). Sin este saltee, un triage de varias
+        // preguntas respondido a tacos dispara el guard de repetición y
+        // silencia al bot 1h: justo el escenario que askWithOptions existe
+        // para resolver. Solo se saltea ESTE chequeo — el tope diario de
+        // abajo sigue aplicando igual.
+        if (!payload.isInteractiveReply && (await isRepeatSpam(db, conv.id, payload.text))) {
           await convs.setPausedUntil(conv.id, Date.now() + SPAM_SNOOZE_MS);
           console.warn(`[spam-guard] conv ${conv.id} en cooldown 1h (mensaje repetido)`);
           return { acknowledged: true };

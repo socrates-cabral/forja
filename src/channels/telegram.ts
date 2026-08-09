@@ -58,6 +58,7 @@ export const telegramAdapter: ChannelAdapter = {
         text: cq.data,
         isOwnerMessage:
           env.OWNER_TELEGRAM_CHAT_ID != null && channelUserId === String(env.OWNER_TELEGRAM_CHAT_ID),
+        isInteractiveReply: true,
         receivedAt: Date.now(),
         rawPayload: update,
       };

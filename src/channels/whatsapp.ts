@@ -109,6 +109,7 @@ export async function parseWhatsAppEvents(
         let text: string | undefined;
         let audioUrl: string | undefined;
         let imageUrl: string | undefined;
+        let isInteractiveReply = false;
         if (m.type === "text") {
           text = m.text?.body || undefined;
         } else if (m.type === "image" && m.image?.id) {
@@ -121,6 +122,7 @@ export async function parseWhatsAppEvents(
           // Toque de un botón o de una opción de lista — se trata como si el
           // cliente hubiera escrito el título de la opción.
           text = m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || undefined;
+          isInteractiveReply = !!text;
         }
         console.log(
           "whatsapp in:",
@@ -135,6 +137,7 @@ export async function parseWhatsAppEvents(
           audioUrl,
           imageUrl,
           isOwnerMessage: false,
+          isInteractiveReply,
           receivedAt: Date.now(),
           rawPayload: m,
         });
