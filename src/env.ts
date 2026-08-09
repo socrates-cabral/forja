@@ -67,11 +67,13 @@ export interface Env {
   WHATSAPP_APP_SECRET?: string;       // firma X-Hub-Signature-256 (si falta, usa META_APP_SECRET)
   XAI_API_KEY?: string;             // xAI (Grok) — proveedor LLM alterno (ver src/llm/provider.ts)
 
-  // ── Cal.com (agenda real para scheduleAppointment) ───────────────────────
-  // Con estas vars, el bot consulta disponibilidad real y reserva en Cal.com.
-  // Sin ellas, scheduleAppointment solo registra la cita para que el dueño la confirme.
+  // ── Cal.com (agenda real para scheduleAppointment/calcomAvailability) ────
+  // Ambas requeridas para que el bot consulte disponibilidad real y reserve
+  // en Cal.com. Sin las dos, NINGUNA de las dos tools se registra (buildTools
+  // no ofrece una tool rota que el modelo pueda intentar usar y luego
+  // inventar el resultado — ver src/tools/index.ts).
   CALCOM_API_KEY?: string;                 // secret: API key de Cal.com (cal_...)
-  CALCOM_EVENT_TYPE_ID?: string;           // event type por defecto (numérico, como string)
+  CALCOM_EVENT_TYPE_ID?: string;           // requerido junto a la key (o CALCOM_EVENT_TYPES) — event type por defecto, numérico como string
   CALCOM_EVENT_TYPES?: string;             // opcional: JSON {"corte":123,"barba":456} servicio→eventTypeId
   CALCOM_TIMEZONE?: string;                // zona horaria (default America/Mexico_City)
 

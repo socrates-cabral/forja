@@ -260,8 +260,8 @@ Como este repo es **Pro**, todas estas tareas están disponibles. Las herramient
 - `handoffHuman` (pasar la conversación a un humano) — siempre activa.
 - `pauseBot` (pausar el bot en una conversación) — siempre activa.
 - `captureLead` (capturar prospectos) — si eligió leads.
-- `scheduleAppointment` (agendar con Cal.com) — si eligió citas.
-- `catalogQuery` (consultar catálogo en R2) — si eligió catálogo.
+- `scheduleAppointment` + `calcomAvailability` (agendar/consultar disponibilidad con Cal.com) — si eligió citas. **Las dos requieren `CALCOM_API_KEY` Y un event type (`CALCOM_EVENT_TYPE_ID` o `CALCOM_EVENT_TYPES`) — sin ambas, ninguna tool se activa.**
+- `catalogQuery` (consultar el catálogo) — si eligió catálogo, **y solo si el catálogo tiene al menos un producto cargado** (`member/config.local.ts` → `catalog`; vive ahí, no en R2).
 
 Además, en Pro el bot también entiende **notas de voz** (las transcribe con Whisper) y **fotos** (las describe con un modelo de visión). No tienes que activar nada extra para eso.
 
@@ -269,7 +269,8 @@ Guarda las tareas elegidas en `memberConfig` dentro de `member/config.local.ts`.
 
 **Secrets según las tareas elegidas** (guárdalos ahora si aplican):
 ```bash
-wrangler secret put CALCOM_API_KEY            # si activó agendar citas
+wrangler secret put CALCOM_API_KEY            # si activó agendar citas — junto con el siguiente, ambos obligatorios
+wrangler secret put CALCOM_EVENT_TYPE_ID      # el event type de Cal.com (numérico) — sin esto, la tool no se activa aunque haya API key
 wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON  # si su flujo lo requiere
 ```
 
@@ -581,7 +582,7 @@ Con el bot YA vivo y probado (no antes), remata así — sin presión, ya probó
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WA_FROM` — si usa WhatsApp por Twilio.
 - `TWILIO_HANDOFF_CONTENT_SID`, `OWNER_WA_NUMBER` — aviso al dueño por WhatsApp con plantilla aprobada (opcional, Pro).
 - `RESEND_API_KEY`, `OWNER_EMAIL` — aviso al dueño por correo (opcional).
-- `CALCOM_API_KEY` — si activó agendar citas.
+- `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID` (o `CALCOM_EVENT_TYPES`) — si activó agendar citas; **las dos son obligatorias juntas**, sin ambas no se activa ni scheduleAppointment ni calcomAvailability.
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — si su flujo lo requiere.
 
 **Variables** en `wrangler.toml` (`[vars]`):

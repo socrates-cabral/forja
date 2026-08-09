@@ -46,7 +46,8 @@ DASHBOARD_BASE_URL = "https://horizontes-bot-{{BOT_SLUG}}.workers.dev"
 #   TELEGRAM_BOT_TOKEN         per-channel — Telegram bot
 #   MANYCHAT_API_KEY           per-channel — ManyChat (Pro)
 #   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_WA_FROM   per-channel — Twilio WhatsApp (Pro)
-#   CALCOM_API_KEY             optional — scheduleAppointment (Pro)
+#   CALCOM_API_KEY             both required together — scheduleAppointment + calcomAvailability (Pro)
+#   CALCOM_EVENT_TYPE_ID       (o CALCOM_EVENT_TYPES) — sin las dos, ninguna tool de Cal.com se registra
 #   GOOGLE_SERVICE_ACCOUNT_JSON  optional — Sheets export (Pro)
 #   RESEND_API_KEY             optional — handoff email
 #   OWNER_EMAIL                handoff email recipient

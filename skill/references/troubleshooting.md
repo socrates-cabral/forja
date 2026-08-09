@@ -74,7 +74,7 @@ bindings creados. Si falta algo, se detiene y te dice qué.
 - **Obligatorios:** `ANTHROPIC_API_KEY`, `DASHBOARD_PASSWORD`
 - **Canales:** `TELEGRAM_BOT_TOKEN`, `MANYCHAT_API_KEY`
 - **WhatsApp (Twilio):** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WA_FROM`, `TWILIO_HANDOFF_CONTENT_SID`
-- **Agenda:** `CALCOM_API_KEY`, `GOOGLE_SERVICE_ACCOUNT_JSON`
+- **Agenda:** `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID` (o `CALCOM_EVENT_TYPES`) — las dos obligatorias juntas; `GOOGLE_SERVICE_ACCOUNT_JSON`
 - **Avisos al dueño:** `OWNER_TELEGRAM_CHAT_ID` (Telegram DM), `RESEND_API_KEY` + `OWNER_EMAIL` (email), `OWNER_WA_NUMBER` (WhatsApp)
 
 > Las **variables** (no secrets) como `BOT_NAME`, `BUSINESS_NAME`,
@@ -127,8 +127,8 @@ bindings creados. Si falta algo, se detiene y te dice qué.
 
 | Síntoma | Causa | Cómo arreglarlo |
 |---|---|---|
-| `scheduleAppointment` no agenda | falta config de Cal.com / Google | setea `CALCOM_API_KEY` y, si usas Google, `GOOGLE_SERVICE_ACCOUNT_JSON` |
-| `catalogQuery` no encuentra productos | el catálogo en R2 está vacío o el binding falta | verifica el binding **CATALOG** (R2) en `wrangler.toml` y que hayas subido el catálogo |
+| `scheduleAppointment`/`calcomAvailability` ni aparecen en el panel | falta `CALCOM_API_KEY` **o** `CALCOM_EVENT_TYPE_ID`/`CALCOM_EVENT_TYPES` | las dos son obligatorias juntas — sin cualquiera de las dos, buildTools no registra ninguna tool de Cal.com (a propósito: mejor que no aparezca a que aparezca rota) |
+| `catalogQuery` ni aparece en el panel | el catálogo del negocio está vacío | `catalogQuery` vive de `member/config.local.ts` → `catalog` (**no** de R2, es un array en código) — cárgalo con al menos un producto; con catálogo vacío la tool no se registra a propósito |
 | `captureLead` no guarda nada | la base de datos no responde | confirma el binding **DB** y que el esquema esté aplicado (`pnpm db:apply:remote`) |
 
 ### Mantenimiento automático
