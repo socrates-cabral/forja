@@ -3,8 +3,19 @@
  * on/off toggle (settings.disabled_tools). Real D1 via miniflare; no LLM calls
  * happen in these routes (tool construction is side-effect free).
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTestMiniflare } from "../helpers/miniflareSetup";
+
+// Este archivo testea el toolset Pro completo (incluida catalogQuery), así que
+// necesita un catálogo no vacío — buildTools ya no registra catalogQuery
+// cuando el catálogo real del negocio está vacío (ver src/tools/index.ts).
+// Preserva memberConfig/businessConfig reales (importOriginal) — el admin
+// renderea business context vía este mismo módulo, y machear solo `catalog`
+// pisaría esos otros exports con undefined y rompería la ruta con 500.
+vi.mock("../../member/config.local", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../member/config.local")>();
+  return { ...actual, catalog: [{ name: "Producto Test", price: 100 }] };
+});
 import { adminApp } from "../../src/admin/routes";
 import { Db } from "../../src/db/client";
 import { SettingsRepo, SETTING_KEYS } from "../../src/db/settings";

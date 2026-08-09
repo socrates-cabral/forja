@@ -1,4 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Mock del catálogo del negocio: no vacío por default, para no cambiar el
+// comportamiento de los tests preexistentes que asumen catalogQuery presente.
+// El gate real (catálogo vacío → catalogQuery ausente) se prueba en
+// index.catalogEmpty.test.ts, con su propio mock.
+vi.mock("../../member/config.local", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../member/config.local")>();
+  return { ...actual, catalog: [{ name: "Producto Test", price: 100 }] };
+});
+
 import { buildTools, type ToolContext } from "../../src/tools/index";
 
 function makeCtx(tier: "free" | "pro", niche?: string): ToolContext {
@@ -33,12 +43,13 @@ describe("buildTools", () => {
     expect(tools.catalogQuery).toBeUndefined();
   });
 
-  it("pro tier con Cal.com configurado agrega scheduleAppointment además de catalogQuery", () => {
+  it("pro tier con Cal.com configurado agrega calcomAvailability + scheduleAppointment además de catalogQuery", () => {
     const ctx = makeCtx("pro");
     (ctx.env as any).CALCOM_API_KEY = "cal_x";
     (ctx.env as any).CALCOM_EVENT_TYPE_ID = "1";
     const tools = buildTools(ctx);
     expect(Object.keys(tools).sort()).toEqual([
+      "calcomAvailability",
       "captureLead",
       "catalogQuery",
       "handoffHuman",
@@ -48,6 +59,7 @@ describe("buildTools", () => {
       "snoozeUser",
     ]);
     expect(tools.scheduleAppointment).toBeDefined();
+    expect(tools.calcomAvailability).toBeDefined();
     expect(tools.catalogQuery).toBeDefined();
   });
 

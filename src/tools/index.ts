@@ -6,11 +6,13 @@ import { pauseBotTool } from "./pauseBot";
 import { snoozeUserTool } from "./snoozeUser";
 import { captureLeadTool } from "./captureLead";
 import { scheduleAppointmentTool } from "./scheduleAppointment";
+import { calcomAvailabilityTool } from "./calcomAvailability";
 import { catalogQueryTool } from "./catalogQuery";
 import { dentalinkAvailabilityTool } from "./dentalinkAvailability";
 import { dentalinkAppointmentTool } from "./dentalinkAppointment";
 import { dentalinkConfigured } from "../integrations/dentalink";
 import { calcomConfigured } from "../integrations/calcom";
+import { catalog } from "../../member/config.local";
 
 export interface ToolContext {
   env: Env;
@@ -31,7 +33,13 @@ export function buildTools(ctx: ToolContext) {
 
   // Pro tier additions
   if (isPro(ctx.env)) {
-    tools.catalogQuery = catalogQueryTool(ctx.env);
+    // Mismo principio que la agenda de citas: un catálogo vacío (el default
+    // del repo) no tiene nada que consultar — ofrecer la tool igual invita al
+    // modelo a inventar productos o a declarar "no lo tenemos" sobre datos
+    // que en realidad viven en businessConfig.services, no en el catálogo.
+    if (catalog.length > 0) {
+      tools.catalogQuery = catalogQueryTool(ctx.env);
+    }
 
     // Agenda de citas: Dentalink y Cal.com son mutuamente excluyentes — una
     // clínica que configuró Dentalink no necesita (ni debe ver) la tool
@@ -44,6 +52,7 @@ export function buildTools(ctx: ToolContext) {
       tools.dentalinkAvailability = dentalinkAvailabilityTool(ctx.env);
       tools.dentalinkAppointment = dentalinkAppointmentTool(ctx.env, ctx.getConversationId);
     } else if (calcomConfigured(ctx.env)) {
+      tools.calcomAvailability = calcomAvailabilityTool(ctx.env);
       tools.scheduleAppointment = scheduleAppointmentTool(ctx.env, ctx.getConversationId);
     }
   }
