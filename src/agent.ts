@@ -17,7 +17,7 @@ import { monthIaCostUsd, applyBudgetGuard } from "./budget";
 import { CustomerFactsRepo } from "./db/facts";
 import { createModel } from "./llm/provider";
 import { costOfUsage } from "./pricing";
-import type { ChannelId } from "./channels/shared";
+import { renderInteractiveAsText, type ChannelId } from "./channels/shared";
 
 export interface SupportAgentState {
   conversationId: string | null;
@@ -405,8 +405,29 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
       }
     }
 
+    // Si el modelo llamó askWithOptions, esa llamada YA es la respuesta
+    // completa del turno — se manda como interactive (botones/lista nativos o
+    // texto numerado, según el canal) y se ignora `assistantText` por
+    // completo, sin importar qué haya escrito el modelo además (evita el
+    // mensaje duplicado sin depender de que el modelo obedezca la regla de
+    // prompt a la perfección). Calculado ANTES del persist de abajo: la regla
+    // 8 le pide al modelo no repetir la pregunta como texto, así que
+    // `assistantText` suele venir vacío en estos turnos — persistir ese vacío
+    // rompería el turno siguiente (Anthropic rechaza un content block de
+    // texto vacío en el historial). Se persiste en su lugar lo que
+    // REALMENTE se mandó al cliente.
+    // findLast() needs ES2023 lib (this project targets ES2022) — filter+pop
+    // gets the same "last matching call wins" semantics.
+    const askCall = toolCallsMade.filter((c) => c.toolName === "askWithOptions").pop();
+    const persistedText = askCall
+      ? renderInteractiveAsText({
+          question: (askCall.input as { pregunta: string; opciones: string[] }).pregunta,
+          options: (askCall.input as { pregunta: string; opciones: string[] }).opciones,
+        })
+      : assistantText;
+
     // Persist assistant message (with usage + model_used + tool calls)
-    await msgs.append(convId, "assistant", assistantText, {
+    await msgs.append(convId, "assistant", persistedText, {
       modelUsed: usedModelId,
       inputTokens,
       outputTokens,
@@ -420,17 +441,9 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
       toolCallsInLast2Turns: toolCallCount,
     });
 
-    // Chunk + send via the channel adapter. Si el modelo llamó askWithOptions,
-    // esa llamada YA es la respuesta completa del turno — se manda como
-    // interactive (botones/lista nativos o texto numerado, según el canal) y
-    // se ignora `assistantText` por completo, sin importar qué haya escrito el
-    // modelo además (evita el mensaje duplicado sin depender de que el modelo
-    // obedezca la regla de prompt a la perfección).
+    // Chunk + send via the channel adapter.
     const channel = this.state.channel as ChannelId;
     const adapter = pickAdapter(channel);
-    // findLast() needs ES2023 lib (this project targets ES2022) — filter+pop
-    // gets the same "last matching call wins" semantics.
-    const askCall = toolCallsMade.filter((c) => c.toolName === "askWithOptions").pop();
     let sentSummary: string;
     if (askCall) {
       const { pregunta, opciones } = askCall.input as { pregunta: string; opciones: string[] };

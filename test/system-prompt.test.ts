@@ -102,7 +102,19 @@ describe("systemPromptFromEnv", () => {
   it("core_principles instruye usar askWithOptions para preguntas de opción múltiple", () => {
     const env = { BOT_NAME: "Bot", BUSINESS_NAME: "Acme", BOT_LANGUAGE: "es" } as any;
     const prompt = systemPromptFromEnv(env, ["searchKb", "askWithOptions"], "ctx");
-    expect(prompt).toContain("askWithOptions");
+    // Aislar <core_principles>: "askWithOptions" solo también aparece en
+    // <tools> porque la tool está en toolList — sin aislar, este test pasa
+    // aunque se borre la regla 8 entera.
+    const corePrinciples = prompt.split("<core_principles>")[1].split("</core_principles>")[0];
+    expect(corePrinciples).toContain("askWithOptions");
+    expect(corePrinciples).toContain("no repitas la pregunta como texto aparte");
+  });
+
+  it("la regla de askWithOptions vive en el prompt base, no depende de que la tool esté en toolList", () => {
+    const env = { BOT_NAME: "Bot", BUSINESS_NAME: "Acme", BOT_LANGUAGE: "es" } as any;
+    const prompt = systemPromptFromEnv(env, ["searchKb"], "ctx");
+    const corePrinciples = prompt.split("<core_principles>")[1].split("</core_principles>")[0];
+    expect(corePrinciples).toContain("askWithOptions");
   });
 
   it("calcula 'hoy' en BOT_TIMEZONE, no en UTC — deuda técnica 2026-08-09", () => {

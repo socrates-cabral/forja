@@ -110,7 +110,7 @@ function makeAgentForToolCallTest() {
 // "the model called a tool" for `toolCallsMade` in agent.ts.
 function makeToolCallStreamResult(
   assistantText: string,
-  toolCall: { toolName: string; input: unknown },
+  toolCall: { toolName: string; input: unknown } | undefined,
 ) {
   async function* gen() {
     yield assistantText;
@@ -122,7 +122,7 @@ function makeToolCallStreamResult(
       outputTokens: 50,
       cachedInputTokens: 0,
     }),
-    steps: Promise.resolve([{ toolCalls: [toolCall] }]),
+    steps: Promise.resolve([{ toolCalls: toolCall ? [toolCall] : [] }]),
   };
 }
 
@@ -177,5 +177,82 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     // Not sent with chunks containing the normal assistant text in that same call.
     const sentReply = sendReplySpy.mock.calls[0][0];
     expect(sentReply.chunks).toEqual([]);
+  });
+
+  it("persiste el texto de pregunta+opciones en D1, no el assistantText descartado (Hallazgo 2)", async () => {
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      // Con la regla 8 del prompt ("no repitas la pregunta como texto
+      // aparte"), el modelo normalmente no escribe nada aquí — assistantText
+      // queda vacío. Si eso se persistiera tal cual, el turno siguiente
+      // mandaría un content block de texto vacío a Anthropic (rechazado con
+      // 400), tumbando conversaciones después de un solo uso de botones.
+      makeToolCallStreamResult("", {
+        toolName: "askWithOptions",
+        input: { pregunta: "¿Cuál es tu previsión?", opciones: ["Fonasa", "Isapre"] },
+      }),
+    );
+
+    const appendSpy = vi.fn(
+      async (_convId: string, _role: string, _content: string, _opts?: any) => "msg-id",
+    );
+    vi.spyOn(MessagesRepo.prototype, "append").mockImplementation(appendSpy as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "quiero agendar" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: vi.fn(async () => {}),
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "quiero agendar", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    // append(conversationId, role, content, opts) — content is the 3rd positional
+    // arg. processBuffer() calls append twice per turn: once for the user's
+    // message (role "user"), once for the assistant's (role "assistant") —
+    // isolate the assistant call, which is the one under test.
+    const assistantCall = appendSpy.mock.calls.find((call) => call[1] === "assistant");
+    expect(assistantCall).toBeDefined();
+    const [, role, persistedContent] = assistantCall!;
+    expect(persistedContent).not.toBe("");
+    expect(persistedContent).toContain("¿Cuál es tu previsión?");
+    expect(persistedContent).toContain("Fonasa");
+    expect(persistedContent).toContain("Isapre");
+  });
+
+  it("sin askWithOptions, manda chunks de texto normal (comportamiento preexistente, Hallazgo 3)", async () => {
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      // No tool call at all — the everyday path that existed before this task.
+      makeToolCallStreamResult("Claro, tenemos turno mañana a las 10am.", undefined),
+    );
+
+    vi.spyOn(MessagesRepo.prototype, "append").mockResolvedValue(undefined as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "hola" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: sendReplySpy,
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "hola", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    expect(sendReplySpy).toHaveBeenCalledTimes(1);
+    const sentReply = sendReplySpy.mock.calls[0][0];
+    expect(sentReply.chunks).toEqual(["Claro, tenemos turno mañana a las 10am."]);
+    expect(sentReply.interactive).toBeUndefined();
   });
 });
