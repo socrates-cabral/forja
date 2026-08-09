@@ -111,6 +111,64 @@ describe("telegramAdapter.parseIncoming", () => {
     );
     expect(msg.isOwnerMessage).toBe(true);
   });
+
+  it("procesa el toque de un botón inline (callback_query) y confirma con answerCallbackQuery", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const msg = await telegramAdapter.parseIncoming(
+      makeReq({
+        update_id: 5,
+        callback_query: {
+          id: "cbq1",
+          from: { id: 555, first_name: "Ana", is_bot: false },
+          data: "Fonasa",
+        },
+      }),
+      env,
+    );
+    expect(msg.channel).toBe("telegram");
+    expect(msg.channelUserId).toBe("555");
+    expect(msg.text).toBe("Fonasa");
+    const ackCall = fetchSpy.mock.calls.find((c) => String(c[0]).includes("answerCallbackQuery"));
+    expect(ackCall).toBeTruthy();
+    const body = JSON.parse(String((ackCall![1] as RequestInit).body));
+    expect(body.callback_query_id).toBe("cbq1");
+  });
+});
+
+describe("telegramAdapter.sendReply", () => {
+  it("con interactive, manda un inline keyboard (un botón por fila)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    await telegramAdapter.sendReply(
+      {
+        channel: "telegram",
+        channelUserId: "555",
+        chunks: [],
+        interactive: { question: "¿Cuál es tu previsión?", options: ["Fonasa", "Isapre", "Particular"] },
+      },
+      env,
+    );
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/sendMessage");
+    const body = JSON.parse(String(init.body));
+    expect(body.text).toBe("¿Cuál es tu previsión?");
+    expect(body.reply_markup.inline_keyboard).toEqual([
+      [{ text: "Fonasa", callback_data: "Fonasa" }],
+      [{ text: "Isapre", callback_data: "Isapre" }],
+      [{ text: "Particular", callback_data: "Particular" }],
+    ]);
+  });
+
+  it("sin interactive, manda texto normal (comportamiento preexistente)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    await telegramAdapter.sendReply(
+      { channel: "telegram", channelUserId: "555", chunks: ["hola"] },
+      env,
+    );
+    const sendCall = fetchSpy.mock.calls.find((c) => String(c[0]).includes("/sendMessage"));
+    const body = JSON.parse(String((sendCall![1] as RequestInit).body));
+    expect(body.text).toBe("hola");
+    expect(body.reply_markup).toBeUndefined();
+  });
 });
 
 describe("resolveTelegramFileUrl", () => {
