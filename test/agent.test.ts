@@ -227,7 +227,7 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
 
     streamTextMock.mockReset();
     streamTextMock.mockImplementation(() =>
-      // Con la regla 8 del prompt ("no repitas la pregunta como texto
+      // Con <opciones_multiples> del prompt ("no repitas la pregunta como texto
       // aparte"), el modelo normalmente no escribe nada aquí — assistantText
       // queda vacío. Si eso se persistiera tal cual, el turno siguiente
       // mandaría un content block de texto vacío a Anthropic (rechazado con

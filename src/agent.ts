@@ -418,8 +418,8 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
 
     // Si el modelo llamó askWithOptions, esa llamada arma el interactive
     // (botones/lista nativos o texto numerado, según el canal). Calculado
-    // ANTES del persist de abajo: la regla 8 le pide al modelo no repetir la
-    // pregunta como texto, así que `assistantText` suele venir vacío en
+    // ANTES del persist de abajo: <opciones_multiples> le pide al modelo no
+    // repetir la pregunta como texto, así que `assistantText` suele venir vacío en
     // estos turnos — persistir ese vacío rompería el turno siguiente
     // (Anthropic rechaza un content block de texto vacío en el historial).
     // findLast() needs ES2023 lib (this project targets ES2022) — filter+pop
@@ -437,7 +437,7 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
     // decisión del dueño: se manda como mensaje real y se persiste junto con
     // la pregunta, así D1 queda como un registro fiel de todo lo que recibió
     // el cliente en el turno. Cuando `assistantText` viene vacío (el caso
-    // común, porque la regla 8 le pide al modelo no repetir la pregunta),
+    // común, porque <opciones_multiples> le pide al modelo no repetir la pregunta),
     // el comportamiento es el de siempre: solo el interactive.
     const hasRealText = assistantText.trim().length > 0;
     const persistedText = askCall

@@ -48,6 +48,34 @@ export function validateDeployConfig(cfg: DeployConfig): DeployCheckResult {
   return { ok: errors.length === 0, errors };
 }
 
+/**
+ * Nombres de los secrets ya cargados en Cloudflare, vía `wrangler secret list`.
+ * "" / [] en cualquier fallo (sin red, sin login, sin npx en esta variante de
+ * OS) — es un complemento del check local, nunca la ruta crítica.
+ *
+ * En Windows "npx" es un shim .cmd — execFileSync sin shell:true no lo
+ * ejecuta (ENOENT/EINVAL según variante) y un catch vacío lo tragaba en
+ * silencio, reportando secrets remotos como faltantes aunque existieran.
+ * shell:true es seguro acá: los argumentos son literales fijos, no input.
+ *
+ * Exportada (en vez de vivir inline en el bloque isMain) para poder probar
+ * el fix con un mock de node:child_process — ver test/scripts/deploy-check.test.ts.
+ */
+export function fetchRemoteSecretNames(
+  execFileSyncFn: typeof import("node:child_process").execFileSync,
+): string[] {
+  try {
+    const raw = execFileSyncFn("npx", ["wrangler", "secret", "list"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      shell: true,
+    }) as unknown as string;
+    return (JSON.parse(raw.slice(raw.indexOf("["))) as { name: string }[]).map((s) => s.name);
+  } catch {
+    return [];
+  }
+}
+
 // Run as a script: read from process.env and exit non-zero on failure.
 // Guarded so importing this module in tests does not call process.exit.
 declare const process: { env: Record<string, string | undefined>; exit(code: number): never };
@@ -72,21 +100,12 @@ if (isMain) {
     }
   } catch { /* sin wrangler.toml: lo reportará el error de BOT_TIER */ }
 
-  try {
+  {
     const { execFileSync } = await import("node:child_process");
-    // En Windows, "npx" es un shim .cmd — execFileSync sin shell:true no lo
-    // ejecuta (ENOENT/EINVAL según variante) y este catch lo tragaba en
-    // silencio, reportando secrets remotos como faltantes aunque existieran.
-    // shell:true es seguro acá: los argumentos son literales fijos, no input.
-    const raw = execFileSync("npx", ["wrangler", "secret", "list"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      shell: true,
-    });
-    for (const s of JSON.parse(raw.slice(raw.indexOf("["))) as { name: string }[]) {
-      if (!cfg[s.name]) cfg[s.name] = "(remote)";
+    for (const name of fetchRemoteSecretNames(execFileSync)) {
+      if (!cfg[name]) cfg[name] = "(remote)";
     }
-  } catch { /* sin red o sin login: seguimos solo con lo local */ }
+  }
 
   const errors: string[] = [];
   const warnings: string[] = [];
