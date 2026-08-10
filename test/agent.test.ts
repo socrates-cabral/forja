@@ -241,6 +241,82 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     expect(occurrences).toBe(1);
   });
 
+  it("el guardrail normaliza tildes/puntuación — 'Cual es tu prevision?' (sin tildes) también se descarta", async () => {
+    // Hallazgo de la revisión de código de 63bc1a6: el modelo genera texto
+    // libre y puede escribirlo sin tildes, mientras que `pregunta` viene de
+    // un argumento estructurado con tildes — un guardrail que exigiera match
+    // byte-a-byte se perdería este caso, tan real en este dominio como el
+    // duplicado exacto.
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      makeToolCallStreamResult("Cual es tu prevision?", {
+        toolName: "askWithOptions",
+        input: { pregunta: "¿Cuál es tu previsión?", opciones: ["Fonasa", "Isapre", "Particular"] },
+      }),
+    );
+
+    vi.spyOn(MessagesRepo.prototype, "append").mockResolvedValue(undefined as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "quiero agendar un control" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: sendReplySpy,
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "quiero agendar un control", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    expect(sendReplySpy).toHaveBeenCalledTimes(1);
+    expect(sendReplySpy.mock.calls[0][0].chunks).toEqual([]);
+  });
+
+  it("LÍMITE CONOCIDO: el guardrail NO atrapa un near-duplicate con relleno ('Dime, ¿cuál es tu previsión?')", async () => {
+    // Documentado a propósito, no arreglado: el guardrail exige igualdad
+    // completa tras normalizar, no fuzzy-matching — ampliarlo arriesga
+    // falsos positivos sobre texto sustantivo real (Hallazgo 3). Si este
+    // patrón aparece en producción, medir con logs antes de ampliar el
+    // matching a ciegas (ver comentario en agent.ts junto a
+    // normalizeForDupeCheck). Este test es un marcador consciente: si
+    // alguien mejora el guardrail para cubrir este caso, este test debe
+    // actualizarse a propósito, no romperse en silencio.
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      makeToolCallStreamResult("Dime, ¿cuál es tu previsión?", {
+        toolName: "askWithOptions",
+        input: { pregunta: "¿Cuál es tu previsión?", opciones: ["Fonasa", "Isapre", "Particular"] },
+      }),
+    );
+
+    vi.spyOn(MessagesRepo.prototype, "append").mockResolvedValue(undefined as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "quiero agendar un control" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: sendReplySpy,
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "quiero agendar un control", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    // Comportamiento ACTUAL (límite conocido): manda las DOS — el texto de
+    // relleno Y el interactive. No es el resultado ideal; es el documentado.
+    expect(sendReplySpy).toHaveBeenCalledTimes(2);
+  });
+
   it("persiste en D1 el texto real + la pregunta renderizada, concatenados (Hallazgo 3)", async () => {
     const { agent } = makeAgentForToolCallTest();
 

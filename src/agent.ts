@@ -443,7 +443,7 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
     // común, porque <opciones_multiples> le pide al modelo no repetir la pregunta),
     // el comportamiento es el de siempre: solo el interactive.
     //
-    // Red de seguridad de código (2026-08-09): dos vueltas de wording más
+    // Red de seguridad de código (2026-08-09): tres vueltas de wording más
     // fuerte en <opciones_multiples> y en la description de la tool NO
     // eliminaron que el modelo, en vivo, a veces escriba la pregunta tal
     // cual como texto Y ADEMÁS la mande vía askWithOptions — un test real
@@ -454,7 +454,26 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
     // persiste dos veces la misma pregunta. No toca el caso de texto
     // sustantivo genuino (precio, dato) antes de la pregunta, que sigue
     // enviándose igual que siempre.
-    const normalizeForDupeCheck = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+    //
+    // La normalización quita tildes (NFD + strip de marcas combinantes) y
+    // puntuación de apertura/cierre en español (¿...?, ¡...!) — cubre que el
+    // modelo escriba "¿Cual es tu prevision?" (sin tildes, texto libre) contra
+    // una `pregunta` estructurada "¿Cuál es tu previsión?" (con tildes).
+    // LÍMITE CONOCIDO, no cubierto a propósito: coincidencia exacta después de
+    // normalizar, no near-duplicates con relleno ("Dime, ¿cuál es tu
+    // previsión?") — ver el test "documenta el límite" en agent.test.ts.
+    // Ampliar esto a fuzzy-matching arriesga falsos positivos sobre texto
+    // sustantivo real (Hallazgo 3); si vuelve a aparecer en vivo, mejor medir
+    // con logs qué tan común es antes de ampliar el matching a ciegas.
+    const normalizeForDupeCheck = (s: string) =>
+      s
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "") // marcas combinantes (tildes) tras NFD
+        .replace(/^[¿¡]+|[?!.,;:]+$/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
     const isTextJustTheQuestion =
       askPregunta !== undefined &&
       normalizeForDupeCheck(assistantText) === normalizeForDupeCheck(askPregunta);
