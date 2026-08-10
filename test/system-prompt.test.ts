@@ -99,18 +99,24 @@ describe("systemPromptFromEnv", () => {
     expect(prompt).toContain(`Hoy es ${new Date().toISOString().slice(0, 10)}`);
   });
 
-  it("core_principles instruye usar askWithOptions para preguntas de opción múltiple", () => {
+  it("instruye usar askWithOptions para preguntas de opción múltiple, en imperativo y en su propio bloque", () => {
+    // 2026-08-09: un test en vivo (Clínica Demo, WhatsApp) mostró que ni
+    // Haiku ni Sonnet 4.6 llamaban la tool cuando la regla era un ítem más
+    // ("preferí...") dentro de la lista numerada de <core_principles>. Se
+    // movió a su propio bloque <opciones_multiples> en imperativo ("SIEMPRE").
     const env = { BOT_NAME: "Bot", BUSINESS_NAME: "Acme", BOT_LANGUAGE: "es" } as any;
     const prompt = systemPromptFromEnv(env, ["searchKb", "askWithOptions"], "ctx");
-    // Aislar <core_principles>: "askWithOptions" solo también aparece en
-    // <tools> porque la tool está en toolList — sin aislar, este test pasa
-    // aunque se borre la regla 8 entera.
+    expect(prompt).toContain("<opciones_multiples>");
+    const block = prompt.split("<opciones_multiples>")[1].split("</opciones_multiples>")[0];
+    expect(block).toContain("SIEMPRE llamá askWithOptions");
+    expect(block).toContain("repitas la pregunta como texto aparte");
+    // No debe quedar un rastro de la regla vieja como ítem numerado dentro
+    // de core_principles — confirma que realmente se movió, no que se duplicó.
     const corePrinciples = prompt.split("<core_principles>")[1].split("</core_principles>")[0];
-    expect(corePrinciples).toContain("askWithOptions");
-    expect(corePrinciples).toContain("no repitas la pregunta como texto aparte");
+    expect(corePrinciples).not.toContain("askWithOptions");
   });
 
-  it("la regla de askWithOptions NO aparece si la tool no está en toolList (Hallazgo 2)", () => {
+  it("el bloque <opciones_multiples> NO aparece si la tool no está en toolList (Hallazgo 2)", () => {
     // Antes de este fix la regla vivía hardcodeada en el TEMPLATE, así que
     // aparecía SIEMPRE — incluso cuando el dueño apagó askWithOptions desde
     // /admin y la tool ni siquiera está en <tools>. Eso le decía al modelo
@@ -118,8 +124,8 @@ describe("systemPromptFromEnv", () => {
     // tiempo, en el mismo prompt.
     const env = { BOT_NAME: "Bot", BUSINESS_NAME: "Acme", BOT_LANGUAGE: "es" } as any;
     const prompt = systemPromptFromEnv(env, ["searchKb"], "ctx");
-    const corePrinciples = prompt.split("<core_principles>")[1].split("</core_principles>")[0];
-    expect(corePrinciples).not.toContain("askWithOptions");
+    expect(prompt).not.toContain("<opciones_multiples>");
+    expect(prompt).not.toContain("askWithOptions");
   });
 
   it("calcula 'hoy' en BOT_TIMEZONE, no en UTC — deuda técnica 2026-08-09", () => {

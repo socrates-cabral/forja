@@ -74,7 +74,15 @@ if (isMain) {
 
   try {
     const { execFileSync } = await import("node:child_process");
-    const raw = execFileSync("npx", ["wrangler", "secret", "list"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    // En Windows, "npx" es un shim .cmd — execFileSync sin shell:true no lo
+    // ejecuta (ENOENT/EINVAL según variante) y este catch lo tragaba en
+    // silencio, reportando secrets remotos como faltantes aunque existieran.
+    // shell:true es seguro acá: los argumentos son literales fijos, no input.
+    const raw = execFileSync("npx", ["wrangler", "secret", "list"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      shell: true,
+    });
     for (const s of JSON.parse(raw.slice(raw.indexOf("["))) as { name: string }[]) {
       if (!cfg[s.name]) cfg[s.name] = "(remote)";
     }
