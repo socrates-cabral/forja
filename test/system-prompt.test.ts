@@ -109,7 +109,13 @@ describe("systemPromptFromEnv", () => {
     expect(prompt).toContain("<opciones_multiples>");
     const block = prompt.split("<opciones_multiples>")[1].split("</opciones_multiples>")[0];
     expect(block).toContain("SIEMPRE llamá askWithOptions");
-    expect(block).toContain("repitas la pregunta como texto aparte");
+    expect(block).toContain("ni siquiera parcialmente");
+    // Ejemplo contrastivo MAL/BIEN — a los modelos les cuesta menos seguir un
+    // contraste concreto que una regla abstracta (2026-08-09: la redacción
+    // sin ejemplo dejaba pasar frases de transición que ya reformulaban la
+    // pregunta, ej. "¿y con cuál Isapre estás?" antes del askWithOptions).
+    expect(block).toContain("MAL:");
+    expect(block).toContain("BIEN:");
     // No debe quedar un rastro de la regla vieja como ítem numerado dentro
     // de core_principles — confirma que realmente se movió, no que se duplicó.
     const corePrinciples = prompt.split("<core_principles>")[1].split("</core_principles>")[0];

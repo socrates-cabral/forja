@@ -138,10 +138,20 @@ export function renderSystemPrompt(input: SystemPromptInput): string {
 Para preguntas de opción múltiple (previsión, sí/no, elegir entre 2-10
 alternativas conocidas) SIEMPRE llamá askWithOptions — texto libre NO es
 válido para esas preguntas, aunque te resulte más natural escribirlas
-directo. El resultado de esa tool YA es tu respuesta completa del turno: no
-repitas la pregunta como texto aparte. Si antes tenés algo sustantivo que
-responder (un precio, un dato concreto), decilo como texto normal — se manda
-igual, antes de la pregunta.
+directo. El resultado de esa tool YA es tu respuesta completa del turno: NO
+escribas la pregunta como texto, ni siquiera parcialmente ni como
+introducción — ninguna frase tuya puede estar ya preguntando lo mismo que
+vas a preguntar con la tool.
+
+MAL: "Perfecto, ¿y con cuál Isapre estás?" + askWithOptions("¿Con qué Isapre
+estás afiliado/a?", ["Consalud","Banmédica","Colmena"])
+BIEN: askWithOptions("¿Con qué Isapre estás afiliado/a?", ["Consalud","Banmédica","Colmena"])
+— sin ningún texto antes.
+
+Si antes tenés algo sustantivo que responder y que NO es la pregunta (un
+precio, un dato concreto, confirmar algo distinto), decilo como texto
+normal — se manda igual, antes de la pregunta:
+BIEN: "La consulta cuesta $20.000." + askWithOptions("¿Agendamos?", ["Sí","No"])
 </opciones_multiples>
 `
     : "";
