@@ -425,9 +425,12 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
     // findLast() needs ES2023 lib (this project targets ES2022) — filter+pop
     // gets the same "last matching call wins" semantics.
     const askCall = toolCallsMade.filter((c) => c.toolName === "askWithOptions").pop();
+    const askPregunta = askCall
+      ? (askCall.input as { pregunta: string; opciones: string[] }).pregunta
+      : undefined;
     const interactiveText = askCall
       ? renderInteractiveAsText({
-          question: (askCall.input as { pregunta: string; opciones: string[] }).pregunta,
+          question: askPregunta!,
           options: (askCall.input as { pregunta: string; opciones: string[] }).opciones,
         })
       : undefined;
@@ -439,7 +442,23 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
     // el cliente en el turno. Cuando `assistantText` viene vacío (el caso
     // común, porque <opciones_multiples> le pide al modelo no repetir la pregunta),
     // el comportamiento es el de siempre: solo el interactive.
-    const hasRealText = assistantText.trim().length > 0;
+    //
+    // Red de seguridad de código (2026-08-09): dos vueltas de wording más
+    // fuerte en <opciones_multiples> y en la description de la tool NO
+    // eliminaron que el modelo, en vivo, a veces escriba la pregunta tal
+    // cual como texto Y ADEMÁS la mande vía askWithOptions — un test real
+    // mostró "¿Cuál es tu previsión?" duplicado dos veces seguidas. Un
+    // "preferí"/"SIEMPRE" en el prompt es una instrucción, no una garantía;
+    // acá se verifica en código: si `assistantText` normalizado es igual a
+    // la pregunta normalizada, se trata como vacío — nunca se manda ni se
+    // persiste dos veces la misma pregunta. No toca el caso de texto
+    // sustantivo genuino (precio, dato) antes de la pregunta, que sigue
+    // enviándose igual que siempre.
+    const normalizeForDupeCheck = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+    const isTextJustTheQuestion =
+      askPregunta !== undefined &&
+      normalizeForDupeCheck(assistantText) === normalizeForDupeCheck(askPregunta);
+    const hasRealText = assistantText.trim().length > 0 && !isTextJustTheQuestion;
     const persistedText = askCall
       ? hasRealText
         ? `${assistantText}\n\n${interactiveText}`

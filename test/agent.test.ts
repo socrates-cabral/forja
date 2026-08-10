@@ -183,6 +183,64 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     expect(secondReply.interactive).toEqual({ question: "¿Agendamos?", options: ["Sí", "No"] });
   });
 
+  it("si assistantText es la MISMA pregunta que askWithOptions, NO la manda dos veces (red de seguridad de código)", async () => {
+    // 2026-08-09, prueba en vivo (WhatsApp): pese a <opciones_multiples> en
+    // imperativo y a la description de la tool actualizada, el modelo a
+    // veces escribe la pregunta tal cual como texto Y ADEMÁS la manda vía
+    // askWithOptions — "¿Cuál es tu previsión?" apareció duplicado dos veces
+    // seguidas en la conversación real. Dos vueltas de wording más fuerte no
+    // lo eliminaron del todo: esto verifica el guardrail de código (comparar
+    // assistantText normalizado contra la pregunta de la tool), no una
+    // instrucción más al modelo.
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      // Mayúsculas/espacios distintos a propósito: la comparación debe
+      // normalizar (trim + lowercase + colapsar espacios), no exigir un
+      // match byte-a-byte.
+      makeToolCallStreamResult("  ¿Cuál  es tu previsión?  ", {
+        toolName: "askWithOptions",
+        input: { pregunta: "¿Cuál es tu previsión?", opciones: ["Fonasa", "Isapre", "Particular"] },
+      }),
+    );
+
+    const appendSpy = vi.fn(
+      async (_convId: string, _role: string, _content: string, _opts?: any) => "msg-id",
+    );
+    vi.spyOn(MessagesRepo.prototype, "append").mockImplementation(appendSpy as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "quiero agendar un control" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: sendReplySpy,
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "quiero agendar un control", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    // Una sola llamada — el interactive. NO un chunk de texto con la
+    // pregunta duplicada antes.
+    expect(sendReplySpy).toHaveBeenCalledTimes(1);
+    const [reply] = sendReplySpy.mock.calls[0];
+    expect(reply.chunks).toEqual([]);
+    expect(reply.interactive).toEqual({
+      question: "¿Cuál es tu previsión?",
+      options: ["Fonasa", "Isapre", "Particular"],
+    });
+
+    // Persistido en D1: la pregunta aparece UNA sola vez, no duplicada.
+    const assistantCall = appendSpy.mock.calls.find((call) => call[1] === "assistant");
+    const [, , persistedContent] = assistantCall!;
+    const occurrences = (persistedContent.match(/Cuál es tu previsión/g) ?? []).length;
+    expect(occurrences).toBe(1);
+  });
+
   it("persiste en D1 el texto real + la pregunta renderizada, concatenados (Hallazgo 3)", async () => {
     const { agent } = makeAgentForToolCallTest();
 
