@@ -72,4 +72,15 @@ describe("fetchRemoteSecretNames", () => {
     });
     expect(fetchRemoteSecretNames(execFileSyncMock as any)).toEqual([]);
   });
+
+  it("ignora texto antes del array JSON (banner/warning de wrangler en stdout)", () => {
+    // wrangler a veces imprime avisos ("update available...") antes del JSON —
+    // .slice(raw.indexOf("[")) existe para saltarlos. Sin este test, borrar
+    // ese slice (reemplazándolo por JSON.parse(raw) directo) igual pasaría
+    // los otros tests, porque ahí el mock ya arranca en "[".
+    const execFileSyncMock = vi.fn(
+      () => ' ⛅️ wrangler 4.95.0 (update available 4.120.0)\n\n[{"name":"TELEGRAM_BOT_TOKEN","type":"secret_text"}]',
+    );
+    expect(fetchRemoteSecretNames(execFileSyncMock as any)).toEqual(["TELEGRAM_BOT_TOKEN"]);
+  });
 });

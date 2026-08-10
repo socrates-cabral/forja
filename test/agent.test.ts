@@ -227,8 +227,8 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
 
     streamTextMock.mockReset();
     streamTextMock.mockImplementation(() =>
-      // Con <opciones_multiples> del prompt ("no repitas la pregunta como texto
-      // aparte"), el modelo normalmente no escribe nada aquí — assistantText
+      // Con <opciones_multiples> del prompt ("no escribas la pregunta ni
+      // siquiera parcialmente"), el modelo normalmente no escribe nada aquí — assistantText
       // queda vacío. Si eso se persistiera tal cual, el turno siguiente
       // mandaría un content block de texto vacío a Anthropic (rechazado con
       // 400), tumbando conversaciones después de un solo uso de botones.
