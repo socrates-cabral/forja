@@ -99,6 +99,16 @@ export interface Env {
   OWNER_TELEGRAM_CHAT_ID?: string;  // for handoff notifications (default channel)
   OWNER_WA_NUMBER?: string;  // for Pro handoff WhatsApp DM (requires template)
 
+  // Opcional: CSV de conversation ids ("channel:channel_user_id", el mismo
+  // formato que conversations.id) que NUNCA reciben el follow-up automático
+  // (src/followup/run.ts) — típicamente las cuentas propias del dueño usadas
+  // para probar el bot como si fueran cliente. Sin esto, esas conversaciones
+  // califican igual que un lead real (4+ mensajes / venta abierta) y el bot
+  // le manda un follow-up al propio dueño. No reemplaza OWNER_TELEGRAM_CHAT_ID
+  // (esa var apaga el pause-guard de handoff; esta apaga el follow-up).
+  // Ej: "telegram:1137802732,whatsapp:56967491268"
+  FOLLOWUP_EXCLUDE_IDS?: string;
+
   // HTTP Basic Auth password for the admin dashboard (secret).
   // Username is always "admin". Set via `wrangler secret put DASHBOARD_PASSWORD`.
   DASHBOARD_PASSWORD: string;

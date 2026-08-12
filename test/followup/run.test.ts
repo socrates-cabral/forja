@@ -33,6 +33,7 @@ import { MessagesRepo } from "../../src/db/messages";
 import { InsightsRepo } from "../../src/db/insights";
 import {
   pickFollowupCandidates,
+  parseFollowupExcludeIds,
   runFollowups,
   MIN_IDLE_MS,
   MAX_IDLE_MS,
@@ -130,6 +131,53 @@ describe("pickFollowupCandidates — selección", () => {
 
     const c = await pickFollowupCandidates(env, NOW, 10);
     expect(c).toHaveLength(0);
+  });
+
+  it("excluye las cuentas propias del dueño listadas en FOLLOWUP_EXCLUDE_IDS, sin vaciar el batch de candidatos reales", async () => {
+    // 2026-08-12: bug real en vivo — las cuentas propias del dueño (usadas
+    // para probar el bot como si fueran cliente) calificaban igual que un
+    // lead real y el follow-up le mandaba mensajes al propio dueño. La
+    // exclusión debe ser en SQL (WHERE), no post-filtro, para no comerse el
+    // cupo de un candidato real que sí debía recibir el follow-up.
+    const own = await seed("owner-test-account");
+    await markHot(own);
+    const real = await seed("real-lead");
+    await markHot(real);
+    env.FOLLOWUP_EXCLUDE_IDS = "manychat:owner-test-account";
+
+    const c = await pickFollowupCandidates(env, NOW, 10);
+    const ids = c.map((x) => x.id);
+    expect(ids).not.toContain(own);
+    expect(ids).toContain(real);
+    expect(c).toHaveLength(1);
+  });
+
+  it("excluye varias cuentas propias a la vez (CSV con espacios)", async () => {
+    const own1 = await seed("own1");
+    await markHot(own1);
+    const own2 = await seed("own2");
+    await markHot(own2);
+    const real = await seed("real2");
+    await markHot(real);
+    env.FOLLOWUP_EXCLUDE_IDS = " manychat:own1 , manychat:own2 ";
+
+    const c = await pickFollowupCandidates(env, NOW, 10);
+    expect(c.map((x) => x.id)).toEqual([real]);
+  });
+});
+
+describe("parseFollowupExcludeIds", () => {
+  it("parsea el CSV, recorta espacios y descarta vacíos", () => {
+    env.FOLLOWUP_EXCLUDE_IDS = " telegram:1137802732 ,whatsapp:56967491268,,  ";
+    expect(parseFollowupExcludeIds(env)).toEqual([
+      "telegram:1137802732",
+      "whatsapp:56967491268",
+    ]);
+  });
+
+  it("devuelve [] cuando la var no está configurada", () => {
+    delete env.FOLLOWUP_EXCLUDE_IDS;
+    expect(parseFollowupExcludeIds(env)).toEqual([]);
   });
 });
 

@@ -50,6 +50,18 @@ interface CandidateRow {
   user_msgs: number;
 }
 
+/**
+ * Ids ("channel:channel_user_id") que nunca deben recibir un follow-up
+ * automático — parseado de FOLLOWUP_EXCLUDE_IDS (CSV, ver src/env.ts).
+ * Exportado para poder testear el parseo por separado del filtrado SQL.
+ */
+export function parseFollowupExcludeIds(env: Env): string[] {
+  return (env.FOLLOWUP_EXCLUDE_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 /** Conversaciones que ameritan follow-up ahora mismo. */
 export async function pickFollowupCandidates(
   env: Env,
@@ -57,6 +69,13 @@ export async function pickFollowupCandidates(
   limit: number,
 ): Promise<FollowupCandidate[]> {
   const db = new Db(env.DB);
+  // Excluidas en SQL (no post-filtradas): si se filtrara DESPUÉS del LIMIT,
+  // una cuenta propia del dueño ocuparía un cupo del batch sin necesidad —
+  // con muchas cuentas propias en la lista, eso podría vaciar el batch entero
+  // de candidatos reales. NOT IN () con lista vacía es inválido en SQLite, así
+  // que la cláusula solo se agrega cuando hay algo que excluir.
+  const excludeIds = parseFollowupExcludeIds(env);
+  const excludeClause = excludeIds.length > 0 ? `AND c.id NOT IN (${excludeIds.map(() => "?").join(",")})` : "";
   const rows = await db.all<CandidateRow>(
     `SELECT * FROM (
        SELECT c.id, c.channel, c.channel_user_id, c.display_name,
@@ -70,6 +89,7 @@ export async function pickFollowupCandidates(
        WHERE f.conversation_id IS NULL
          AND c.channel != 'instagram'
          AND (c.paused_until IS NULL OR c.paused_until < ?)
+         ${excludeClause}
      )
      WHERE last_user_at IS NOT NULL
        AND last_user_at <= ? AND last_user_at >= ?
@@ -77,7 +97,7 @@ export async function pickFollowupCandidates(
        AND (COALESCE(sale_opportunity, 0) = 1 OR user_msgs >= 4)
      ORDER BY COALESCE(sale_opportunity, 0) DESC, user_msgs DESC
      LIMIT ?`,
-    [now, now - MIN_IDLE_MS, now - MAX_IDLE_MS, limit],
+    [now, ...excludeIds, now - MIN_IDLE_MS, now - MAX_IDLE_MS, limit],
   );
   return rows.map((r) => ({
     id: r.id,
