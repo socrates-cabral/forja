@@ -277,15 +277,12 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     expect(sendReplySpy.mock.calls[0][0].chunks).toEqual([]);
   });
 
-  it("LÍMITE CONOCIDO: el guardrail NO atrapa un near-duplicate con relleno ('Dime, ¿cuál es tu previsión?')", async () => {
-    // Documentado a propósito, no arreglado: el guardrail exige igualdad
-    // completa tras normalizar, no fuzzy-matching — ampliarlo arriesga
-    // falsos positivos sobre texto sustantivo real (Hallazgo 3). Si este
-    // patrón aparece en producción, medir con logs antes de ampliar el
-    // matching a ciegas (ver comentario en agent.ts junto a
-    // normalizeForDupeCheck). Este test es un marcador consciente: si
-    // alguien mejora el guardrail para cubrir este caso, este test debe
-    // actualizarse a propósito, no romperse en silencio.
+  it("recorta la pregunta aunque venga pegada con relleno en la misma frase ('Dime, ¿cuál es tu previsión?')", async () => {
+    // Antes esto era un límite documentado como "no cubierto" (ver git log
+    // de este test). El fix del 2026-08-12 (separar por línea/párrafo/antes
+    // de "¿" y recortar el último trozo si normaliza igual a la pregunta)
+    // también resuelve este caso — "Dime," queda como residual, corto pero
+    // sin la pregunta duplicada.
     const { agent } = makeAgentForToolCallTest();
 
     streamTextMock.mockReset();
@@ -312,9 +309,80 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     agent.state.pendingMessages = [{ text: "quiero agendar un control", receivedAt: Date.now() }];
     await agent.processBuffer();
 
-    // Comportamiento ACTUAL (límite conocido): manda las DOS — el texto de
-    // relleno Y el interactive. No es el resultado ideal; es el documentado.
     expect(sendReplySpy).toHaveBeenCalledTimes(2);
+    const [firstReply] = sendReplySpy.mock.calls[0];
+    expect(firstReply.chunks.join(" ")).not.toMatch(/previsión/i);
+    const [secondReply] = sendReplySpy.mock.calls[1];
+    expect(secondReply.interactive).toEqual({
+      question: "¿Cuál es tu previsión?",
+      options: ["Fonasa", "Isapre", "Particular"],
+    });
+  });
+
+  it("recorta la pregunta repetida DOS veces con contenido real antes (caso real en vivo, WhatsApp 2026-08-12)", async () => {
+    // Captura real: el cliente vio "Excelente. [...] dura 45 minutos." y
+    // DESPUÉS "¿Con cuál previsión estás afiliado?" en DOS burbujas de texto
+    // separadas, antes de los botones — el modelo escribió la pregunta dos
+    // veces seguidas, cada una en su propio párrafo. El guardrail debe
+    // recortar AMBAS repeticiones y quedarse solo con el contenido real.
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      makeToolCallStreamResult(
+        "Excelente. La primera consulta incluye diagnóstico + panorámica y dura 45 minutos.\n\n" +
+          "¿Con cuál previsión estás afiliado?\n\n¿Con cuál previsión estás afiliado?",
+        {
+          toolName: "askWithOptions",
+          input: {
+            pregunta: "¿Con cuál previsión estás afiliado?",
+            opciones: ["Fonasa", "Isapre", "Particular"],
+          },
+        },
+      ),
+    );
+
+    const appendSpy = vi.fn(
+      async (_convId: string, _role: string, _content: string, _opts?: any) => "msg-id",
+    );
+    vi.spyOn(MessagesRepo.prototype, "append").mockImplementation(appendSpy as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "es mi primera vez" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: sendReplySpy,
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "es mi primera vez", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    expect(sendReplySpy).toHaveBeenCalledTimes(2);
+    // chunkReply puede partir el texto real en más de una burbuja (por
+    // oración) — lo que importa acá es que NINGUNA burbuja de texto trae la
+    // pregunta duplicada, no la forma exacta del chunking (ya cubierto por
+    // los tests propios de chunkReply).
+    const [firstReply] = sendReplySpy.mock.calls[0];
+    expect(firstReply.chunks.join(" ")).not.toMatch(/con cuál previsión/i);
+    expect(firstReply.chunks.join(" ")).toContain("diagnóstico");
+    expect(firstReply.interactive).toBeUndefined();
+    const [secondReply] = sendReplySpy.mock.calls[1];
+    expect(secondReply.chunks).toEqual([]);
+    expect(secondReply.interactive).toEqual({
+      question: "¿Con cuál previsión estás afiliado?",
+      options: ["Fonasa", "Isapre", "Particular"],
+    });
+
+    // Persistido en D1: la pregunta aparece UNA sola vez (dentro del
+    // interactive renderizado), no tres.
+    const assistantCall = appendSpy.mock.calls.find((call) => call[1] === "assistant");
+    const [, , persistedContent] = assistantCall!;
+    const occurrences = (persistedContent.match(/con cuál previsión estás afiliado/gi) ?? []).length;
+    expect(occurrences).toBe(1);
   });
 
   it("persiste en D1 el texto real + la pregunta renderizada, concatenados (Hallazgo 3)", async () => {

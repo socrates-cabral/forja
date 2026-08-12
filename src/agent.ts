@@ -443,28 +443,17 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
     // común, porque <opciones_multiples> le pide al modelo no repetir la pregunta),
     // el comportamiento es el de siempre: solo el interactive.
     //
-    // Red de seguridad de código (2026-08-09): tres vueltas de wording más
-    // fuerte en <opciones_multiples> y en la description de la tool NO
-    // eliminaron que el modelo, en vivo, a veces escriba la pregunta tal
-    // cual como texto Y ADEMÁS la mande vía askWithOptions — un test real
-    // mostró "¿Cuál es tu previsión?" duplicado dos veces seguidas. Un
-    // "preferí"/"SIEMPRE" en el prompt es una instrucción, no una garantía;
-    // acá se verifica en código: si `assistantText` normalizado es igual a
-    // la pregunta normalizada, se trata como vacío — nunca se manda ni se
-    // persiste dos veces la misma pregunta. No toca el caso de texto
-    // sustantivo genuino (precio, dato) antes de la pregunta, que sigue
-    // enviándose igual que siempre.
+    // Red de seguridad de código (2026-08-09, endurecida 2026-08-12): tres
+    // vueltas de wording más fuerte en <opciones_multiples> y en la
+    // description de la tool NO eliminaron que el modelo, en vivo, a veces
+    // escriba la pregunta como texto Y ADEMÁS la mande vía askWithOptions.
+    // Un "preferí"/"SIEMPRE" en el prompt es una instrucción, no una
+    // garantía; acá se verifica en código.
     //
     // La normalización quita tildes (NFD + strip de marcas combinantes) y
     // puntuación de apertura/cierre en español (¿...?, ¡...!) — cubre que el
     // modelo escriba "¿Cual es tu prevision?" (sin tildes, texto libre) contra
     // una `pregunta` estructurada "¿Cuál es tu previsión?" (con tildes).
-    // LÍMITE CONOCIDO, no cubierto a propósito: coincidencia exacta después de
-    // normalizar, no near-duplicates con relleno ("Dime, ¿cuál es tu
-    // previsión?") — ver el test "documenta el límite" en agent.test.ts.
-    // Ampliar esto a fuzzy-matching arriesga falsos positivos sobre texto
-    // sustantivo real (Hallazgo 3); si vuelve a aparecer en vivo, mejor medir
-    // con logs qué tan común es antes de ampliar el matching a ciegas.
     const normalizeForDupeCheck = (s: string) =>
       s
         .trim()
@@ -474,13 +463,65 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
         .replace(/^[¿¡]+|[?!.,;:]+$/g, "")
         .replace(/\s+/g, " ")
         .trim();
-    const isTextJustTheQuestion =
-      askPregunta !== undefined &&
-      normalizeForDupeCheck(assistantText) === normalizeForDupeCheck(askPregunta);
-    const hasRealText = assistantText.trim().length > 0 && !isTextJustTheQuestion;
+    // 2026-08-12, prueba en vivo (WhatsApp, captura real): el guardrail de
+    // "todo el texto ES la pregunta" no atrapaba el caso real — el modelo
+    // escribió contenido sustantivo real (info de la primera consulta) Y
+    // ADEMÁS la pregunta repetida DOS VECES seguidas, cada una en su propio
+    // párrafo: "Excelente. [...] dura 45 minutos.\n\n¿Con cuál previsión
+    // estás afiliado?\n\n¿Con cuál previsión estás afiliado?" — el cliente
+    // vio la pregunta duplicada en dos burbujas de WhatsApp antes de los
+    // botones. En vez de comparar el texto ENTERO contra la pregunta, se
+    // separa por párrafo/línea/antes-de-"¿" y se recorta del final cualquier
+    // trozo que normalice igual a la pregunta — las veces que haga falta
+    // (tope 5, por si el modelo la repite más de dos veces). El texto
+    // sustantivo real (Hallazgo 3) nunca termina normalizando igual a la
+    // pregunta, así que nunca se recorta por error.
+    const stripTrailingQuestionRestatements = (text: string, question: string): string => {
+      const normQuestion = normalizeForDupeCheck(question);
+      if (!normQuestion) return text;
+      let current = text;
+      for (let i = 0; i < 5; i++) {
+        // Caso base: el texto RESTANTE es, en sí mismo, la pregunta — sin
+        // nada antes que separar (ej. la primera vez que se llama, cuando
+        // `assistantText` es solo la pregunta y nada más). Ningún splitter de
+        // abajo produce 2+ partes en ese caso porque no hay nada previo.
+        if (normalizeForDupeCheck(current) === normQuestion) {
+          current = "";
+          break;
+        }
+        let strippedThisRound = false;
+        for (const splitter of [/\n\n+/, /\n+/, /(?=¿)/]) {
+          const parts = current
+            .split(splitter)
+            .map((p) => p.trim())
+            .filter(Boolean);
+          if (parts.length < 2) continue;
+          const last = parts[parts.length - 1];
+          if (normalizeForDupeCheck(last) === normQuestion) {
+            current = parts.slice(0, -1).join("\n\n").trim();
+            strippedThisRound = true;
+            break;
+          }
+        }
+        if (!strippedThisRound) break;
+      }
+      return current;
+    };
+    const cleanedAssistantText =
+      askPregunta !== undefined
+        ? stripTrailingQuestionRestatements(assistantText, askPregunta)
+        : assistantText;
+    // LÍMITE CONOCIDO, no cubierto a propósito: solo recorta cuando un trozo
+    // COMPLETO (párrafo/línea/frase) normaliza igual a la pregunta, no
+    // near-duplicates con relleno DENTRO de la misma frase ("Dime, ¿cuál es
+    // tu previsión?" sin salto de línea/frase antes) — ver el test "documenta
+    // el límite" en agent.test.ts. Ampliar esto a fuzzy-matching arriesga
+    // falsos positivos sobre texto sustantivo real; si vuelve a aparecer en
+    // vivo con otra forma, mejor medir con logs antes de ampliar a ciegas.
+    const hasRealText = cleanedAssistantText.trim().length > 0;
     const persistedText = askCall
       ? hasRealText
-        ? `${assistantText}\n\n${interactiveText}`
+        ? `${cleanedAssistantText}\n\n${interactiveText}`
         : interactiveText!
       : assistantText;
 
@@ -513,7 +554,7 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
       // solo pacea chunks dentro de una misma llamada), así que no se
       // inventa uno acá.
       if (hasRealText) {
-        chunks = chunkReply(assistantText, cfg.maxChunks);
+        chunks = chunkReply(cleanedAssistantText, cfg.maxChunks);
         await adapter.sendReply(
           {
             channel,
