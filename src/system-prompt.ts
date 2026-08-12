@@ -173,9 +173,15 @@ BIEN: "La consulta cuesta $20.000." + askWithOptions("¿Agendamos?", ["Sí","No"
   // agendó mal la cita. Calcular el día de la semana de una fecha es
   // aritmética de calendario, un tipo de tarea donde los LLM son
   // consistentemente poco confiables. En vez de pedirle al modelo que lo
-  // calcule, se le da ya calculado: una tabla de los próximos 14 días con su
+  // calcule, se le da ya calculado: una tabla de los próximos N días con su
   // día de la semana, para que solo tenga que BUSCAR la fila, no calcularla.
+  // 30 días (no 14): la revisión del fix original notó que un horizonte
+  // corto deja al modelo expuesto al mismo bug apenas el cliente pide algo
+  // más lejos — el negocio real puede necesitar agendar con más
+  // anticipación (ver <current_date> más abajo: fuera de esta tabla, el bot
+  // escala en vez de calcular a ciegas).
   const nextDaysReference = (todayIso: string, days: number): string => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(todayIso)) return "";
     const [y, m, d] = todayIso.split("-").map(Number);
     const base = Date.UTC(y, m - 1, d);
     const weekdayFmt = new Intl.DateTimeFormat("es-CL", { weekday: "long", timeZone: "UTC" });
@@ -193,10 +199,10 @@ Hoy es ${today}. Los días de la semana de la tabla de abajo ya están calculado
 BUSCÁ la fila que corresponda, NUNCA calcules vos el día de la semana de una fecha ni
 cuántos días faltan para "el próximo lunes/martes/etc." — es un cálculo donde te
 equivocás seguido (ya pasó en producción: le prometiste al cliente una fecha de cita
-equivocada). Fuera de este rango, calculá con cuidado y verificá el resultado antes de
-decirlo.
+equivocada). Si el cliente pide una fecha más allá de esta tabla, decilo con
+naturalidad y coordina con el equipo — no la calcules vos mismo.
 
-${nextDaysReference(today, 14)}
+${nextDaysReference(today, 30)}
 </current_date>`
     : "";
 

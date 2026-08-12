@@ -70,23 +70,36 @@ describe("renderSystemPrompt", () => {
     expect(prompt).toContain("</current_date>");
   });
 
-  it("<current_date> trae una tabla de 14 días con el día de la semana ya calculado", () => {
+  it("<current_date> trae una tabla de 30 días con el día de la semana ya calculado", () => {
     // 2026-08-12, bug real en producción: el modelo calculó mal el día de la
     // semana tres veces seguidas en la misma conversación (dijo "hoy es
     // martes 12 de agosto" cuando el 12 de agosto de 2026 es MIÉRCOLES, y
     // terminó prometiéndole al cliente "martes 19 de agosto" — el martes
     // real, contando desde un miércoles 12, es el 18). Este test ancla los
     // valores reales para que una regresión de zona horaria o de fórmula se
-    // note de inmediato — no solo que la tabla "exista".
+    // note de inmediato — no solo que la tabla "exista". 30 días (no 14):
+    // la revisión del fix original notó que un horizonte corto deja al
+    // modelo expuesto al mismo bug apenas el cliente pide algo más lejos.
     const prompt = renderSystemPrompt({ ...input, today: "2026-08-12" });
     const block = prompt.split("<current_date>")[1].split("</current_date>")[0];
     expect(block).toContain("2026-08-12 miércoles (hoy)");
     expect(block).toContain("2026-08-13 jueves");
     expect(block).toContain("2026-08-18 martes");
     expect(block).toContain("2026-08-19 miércoles");
-    // 14 días exactos: hoy (día 0) + 13 más.
-    expect(block).toContain("2026-08-25 martes");
-    expect(block).not.toContain("2026-08-26");
+    // Cruce de mes, dentro de los 30 días: día 29 (0-indexado) = 10 de
+    // septiembre, jueves.
+    expect(block).toContain("2026-09-10 jueves");
+    // 30 días exactos: hoy (día 0) + 29 más, ni uno más.
+    expect(block).not.toContain("2026-09-11");
+  });
+
+  it("nextDaysReference no rompe silenciosamente con un today mal formado — devuelve el bloque vacío", () => {
+    // Hoy solo lo alimenta systemPromptFromEnv con formato garantizado,
+    // pero renderSystemPrompt es exportada — un caller futuro con un string
+    // mal formado no debe producir "Invalid Date" repetido 30 veces.
+    const prompt = renderSystemPrompt({ ...input, today: "12 de agosto" });
+    expect(prompt).toContain("<current_date>");
+    expect(prompt).not.toContain("Invalid Date");
   });
 
   it("omite el bloque <current_date> completo si no hay today", () => {
