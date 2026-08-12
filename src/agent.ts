@@ -489,16 +489,27 @@ export class SupportAgent extends Agent<Env, SupportAgentState> {
           current = "";
           break;
         }
+        // Recorta por POSICIÓN sobre el string original (nunca reconstruye
+        // con split+join): el revisor de f45cb2a encontró que un
+        // `parts.slice(0,-1).join("\n\n")` inventaba saltos de párrafo
+        // cuando el separador real era un "\n" simple (o ninguno, para el
+        // caso "¿") — eso fragmentaba en burbujas de más algo que el modelo
+        // había escrito como un bloque cohesivo (ej. una lista de opciones
+        // de una sola línea cada una, seguida de la pregunta repetida).
+        // Tomar `before = current.slice(0, lastMatch.index)` preserva el
+        // texto previo byte a byte, saltos de línea incluidos.
         let strippedThisRound = false;
-        for (const splitter of [/\n\n+/, /\n+/, /(?=¿)/]) {
-          const parts = current
-            .split(splitter)
-            .map((p) => p.trim())
-            .filter(Boolean);
-          if (parts.length < 2) continue;
-          const last = parts[parts.length - 1];
-          if (normalizeForDupeCheck(last) === normQuestion) {
-            current = parts.slice(0, -1).join("\n\n").trim();
+        for (const splitter of [/\n\n+/g, /\n+/g, /(?=¿)/g]) {
+          const matches = [...current.matchAll(splitter)];
+          if (matches.length === 0) continue;
+          const lastMatch = matches[matches.length - 1];
+          const matchStart = lastMatch.index ?? -1;
+          if (matchStart < 0) continue;
+          const before = current.slice(0, matchStart).trim();
+          const after = current.slice(matchStart + lastMatch[0].length).trim();
+          if (!before || !after) continue;
+          if (normalizeForDupeCheck(after) === normQuestion) {
+            current = before;
             strippedThisRound = true;
             break;
           }

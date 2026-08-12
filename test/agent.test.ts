@@ -385,6 +385,90 @@ describe("SupportAgent.processBuffer — askWithOptions decides interactive vs t
     expect(occurrences).toBe(1);
   });
 
+  it("recorta sin fragmentar en burbujas de más una lista de una sola línea cada una (hallazgo de la revisión de f45cb2a)", async () => {
+    // La primera versión de este fix reconstruía el texto con
+    // parts.slice(0,-1).join("\n\n") sin importar el separador real —
+    // cuando el contenido real estaba separado por "\n" simples (no "\n\n"),
+    // eso INVENTABA saltos de párrafo que chunkReply interpreta como
+    // burbujas nuevas, fragmentando algo que el modelo escribió como un
+    // bloque cohesivo. Este test verifica que el texto real llega en UNA
+    // sola burbuja, con los saltos de línea originales intactos.
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      // Sin puntos "." dentro del texto real a propósito: chunkReply separa
+      // por oración cuando no hay "\n\n" (ver src/replies/chunker.ts), y eso
+      // fragmentaría el texto por una razón AJENA a este fix — acá se quiere
+      // aislar específicamente el recorte de la pregunta duplicada.
+      makeToolCallStreamResult("Estas son las opciones:\n- Diagnóstico\n- Panorámica\n¿Cuál prefieres?", {
+        toolName: "askWithOptions",
+        input: { pregunta: "¿Cuál prefieres?", opciones: ["Diagnóstico", "Panorámica"] },
+      }),
+    );
+
+    vi.spyOn(MessagesRepo.prototype, "append").mockResolvedValue(undefined as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "quiero una consulta" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: sendReplySpy,
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "quiero una consulta", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    expect(sendReplySpy).toHaveBeenCalledTimes(2);
+    const [firstReply] = sendReplySpy.mock.calls[0];
+    // Una sola burbuja de texto — chunkReply no debe ver saltos de párrafo
+    // (\n\n) que el modelo nunca escribió.
+    expect(firstReply.chunks).toHaveLength(1);
+    expect(firstReply.chunks[0]).toBe("Estas son las opciones:\n- Diagnóstico\n- Panorámica");
+  });
+
+  it("recorta TRES repeticiones seguidas de la pregunta (no solo dos)", async () => {
+    const { agent } = makeAgentForToolCallTest();
+
+    streamTextMock.mockReset();
+    streamTextMock.mockImplementation(() =>
+      makeToolCallStreamResult(
+        "Info real.\n\n¿Con cuál previsión estás afiliado?\n\n¿Con cuál previsión estás afiliado?\n\n¿Con cuál previsión estás afiliado?",
+        {
+          toolName: "askWithOptions",
+          input: {
+            pregunta: "¿Con cuál previsión estás afiliado?",
+            opciones: ["Fonasa", "Isapre", "Particular"],
+          },
+        },
+      ),
+    );
+
+    vi.spyOn(MessagesRepo.prototype, "append").mockResolvedValue(undefined as any);
+    vi.spyOn(MessagesRepo.prototype, "lastN").mockResolvedValue([
+      { role: "user", content: "hola" },
+    ] as any);
+    vi.spyOn(ConversationsRepo.prototype, "touchLastMessage").mockResolvedValue(
+      undefined as any,
+    );
+
+    const sendReplySpy = vi.fn(async (_reply: any, _env: any) => {});
+    vi.spyOn(senderMod, "pickAdapter").mockReturnValue({
+      sendReply: sendReplySpy,
+    } as any);
+
+    agent.state.pendingMessages = [{ text: "hola", receivedAt: Date.now() }];
+    await agent.processBuffer();
+
+    expect(sendReplySpy).toHaveBeenCalledTimes(2);
+    const [firstReply] = sendReplySpy.mock.calls[0];
+    expect(firstReply.chunks).toEqual(["Info real."]);
+  });
+
   it("persiste en D1 el texto real + la pregunta renderizada, concatenados (Hallazgo 3)", async () => {
     const { agent } = makeAgentForToolCallTest();
 
