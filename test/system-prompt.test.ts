@@ -66,8 +66,27 @@ describe("renderSystemPrompt", () => {
   it("inyecta <current_date> con la fecha exacta cuando se pasa today", () => {
     const prompt = renderSystemPrompt({ ...input, today: "2026-08-08" });
     expect(prompt).toContain("<current_date>");
-    expect(prompt).toContain("Hoy es 2026-08-08 (formato YYYY-MM-DD)");
+    expect(prompt).toContain("Hoy es 2026-08-08");
     expect(prompt).toContain("</current_date>");
+  });
+
+  it("<current_date> trae una tabla de 14 días con el día de la semana ya calculado", () => {
+    // 2026-08-12, bug real en producción: el modelo calculó mal el día de la
+    // semana tres veces seguidas en la misma conversación (dijo "hoy es
+    // martes 12 de agosto" cuando el 12 de agosto de 2026 es MIÉRCOLES, y
+    // terminó prometiéndole al cliente "martes 19 de agosto" — el martes
+    // real, contando desde un miércoles 12, es el 18). Este test ancla los
+    // valores reales para que una regresión de zona horaria o de fórmula se
+    // note de inmediato — no solo que la tabla "exista".
+    const prompt = renderSystemPrompt({ ...input, today: "2026-08-12" });
+    const block = prompt.split("<current_date>")[1].split("</current_date>")[0];
+    expect(block).toContain("2026-08-12 miércoles (hoy)");
+    expect(block).toContain("2026-08-13 jueves");
+    expect(block).toContain("2026-08-18 martes");
+    expect(block).toContain("2026-08-19 miércoles");
+    // 14 días exactos: hoy (día 0) + 13 más.
+    expect(block).toContain("2026-08-25 martes");
+    expect(block).not.toContain("2026-08-26");
   });
 
   it("omite el bloque <current_date> completo si no hay today", () => {

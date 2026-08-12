@@ -166,11 +166,37 @@ BIEN: "La consulta cuesta $20.000." + askWithOptions("¿Agendamos?", ["Sí","No"
 
   // Sin fecha, el modelo infiere "hoy" de su training data y agenda en el pasado.
   const today = input.today?.trim();
+  // 2026-08-12, bug real en producción: el modelo calculó mal el día de la
+  // semana TRES veces seguidas en la misma conversación (dijo que el 12 de
+  // agosto era martes cuando era miércoles, y terminó prometiéndole al
+  // cliente "martes 19 de agosto" cuando el martes real era el 18) — le
+  // agendó mal la cita. Calcular el día de la semana de una fecha es
+  // aritmética de calendario, un tipo de tarea donde los LLM son
+  // consistentemente poco confiables. En vez de pedirle al modelo que lo
+  // calcule, se le da ya calculado: una tabla de los próximos 14 días con su
+  // día de la semana, para que solo tenga que BUSCAR la fila, no calcularla.
+  const nextDaysReference = (todayIso: string, days: number): string => {
+    const [y, m, d] = todayIso.split("-").map(Number);
+    const base = Date.UTC(y, m - 1, d);
+    const weekdayFmt = new Intl.DateTimeFormat("es-CL", { weekday: "long", timeZone: "UTC" });
+    const lines: string[] = [];
+    for (let i = 0; i < days; i++) {
+      const dt = new Date(base + i * 86400000);
+      const iso = dt.toISOString().slice(0, 10);
+      lines.push(`- ${iso} ${weekdayFmt.format(dt)}${i === 0 ? " (hoy)" : ""}`);
+    }
+    return lines.join("\n");
+  };
   const currentDateBlock = today
     ? `<current_date>
-Hoy es ${today} (formato YYYY-MM-DD). Úsalo como referencia para calcular fechas
-relativas ("mañana", "el viernes que viene", "en dos semanas", etc.) — nunca asumas
-la fecha actual desde tu conocimiento de entrenamiento.
+Hoy es ${today}. Los días de la semana de la tabla de abajo ya están calculados —
+BUSCÁ la fila que corresponda, NUNCA calcules vos el día de la semana de una fecha ni
+cuántos días faltan para "el próximo lunes/martes/etc." — es un cálculo donde te
+equivocás seguido (ya pasó en producción: le prometiste al cliente una fecha de cita
+equivocada). Fuera de este rango, calculá con cuidado y verificá el resultado antes de
+decirlo.
+
+${nextDaysReference(today, 14)}
 </current_date>`
     : "";
 
