@@ -102,6 +102,20 @@ beforeEach(async () => {
 });
 
 describe("pickFollowupCandidates — selección", () => {
+  it("sin FOLLOWUP_EXCLUDE_IDS configurada, el comportamiento es idéntico al de antes de la exclusión (regresión)", async () => {
+    // env.FOLLOWUP_EXCLUDE_IDS no está seteada acá a propósito — confirma que
+    // la cláusula SQL dinámica se omite por completo (no un `NOT IN ()`
+    // colgando) y que instalaciones sin esta var (la inmensa mayoría) ven el
+    // mismo resultado que devolvía pickFollowupCandidates antes de a932ec2.
+    expect(env.FOLLOWUP_EXCLUDE_IDS).toBeUndefined();
+    const hot = await seed("hot-no-exclusion");
+    await markHot(hot);
+
+    const c = await pickFollowupCandidates(env, NOW, 10);
+    expect(c).toHaveLength(1);
+    expect(c[0].id).toBe(hot);
+  });
+
   it("elige calientes (sale_opportunity) y activos (4+ msgs); ignora al resto", async () => {
     const hot = await seed("hot");
     await markHot(hot);

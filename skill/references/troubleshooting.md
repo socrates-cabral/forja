@@ -136,6 +136,7 @@ bindings creados. Si falta algo, se detiene y te dice qué.
 | Síntoma | Causa | Cómo arreglarlo |
 |---|---|---|
 | Los mensajes viejos no se borran | el cron de limpieza no corre | el cron diario `0 3 * * *` purga mensajes con más de 90 días; verifica el bloque `[triggers]`/`crons` en `wrangler.toml` |
+| El bot te manda un follow-up A VOS MISMO cuando probaste el bot como si fueras cliente | el follow-up automático no distingue tus cuentas de prueba de un lead real (4+ mensajes o "venta abierta" son suficiente) | agrega tu(s) propia(s) cuenta(s) a `FOLLOWUP_EXCLUDE_IDS` (ver comentario de secrets en `wrangler.toml`) — CSV de `"channel:channel_user_id"`, ej. `"telegram:123456789,whatsapp:56912345678"`; pedile a Claude Code que te consulte el `id` exacto de esa conversación en D1 si no lo sabés |
 
 ---
 

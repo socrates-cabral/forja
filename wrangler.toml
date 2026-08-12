@@ -54,6 +54,14 @@ DASHBOARD_BASE_URL = "https://horizontes-bot-{{BOT_SLUG}}.workers.dev"
 #   OWNER_EMAIL                handoff email recipient
 #   OWNER_TELEGRAM_CHAT_ID     handoff notification (default channel — owner /start's the bot)
 #   OWNER_WA_NUMBER            handoff WhatsApp DM recipient (Pro)
+#   FOLLOWUP_EXCLUDE_IDS       optional — CSV of "channel:channel_user_id" (same format as
+#                              conversations.id) that NEVER get an automatic follow-up message —
+#                              typically the owner's own accounts used to test the bot as if they
+#                              were a customer. Without this, a busy test conversation (4+ msgs
+#                              or an open "sale") looks just like a real lead and the bot follows
+#                              up with the owner. Find the exact id by asking Claude Code to query
+#                              conversations in D1, or from the URL of that thread in /admin.
+#                              Example: "telegram:123456789,whatsapp:56912345678"
 #   TWILIO_HANDOFF_CONTENT_SID approved WhatsApp template SID for the handoff DM (Pro)
 #   CONTROL_PLANE_TOKEN        optional (secret) — Bearer the hosted control plane presents to call /api/*
 #                              set with: wrangler secret put CONTROL_PLANE_TOKEN
